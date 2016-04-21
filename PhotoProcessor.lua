@@ -3,16 +3,13 @@ local LrDialogs = import 'LrDialogs'
 local LrLogger = import 'LrLogger'
 local LrTasks = import 'LrTasks'
 local LrFileUtils = import 'LrFileUtils'
+local LrFunctionContext = import 'LrFunctionContext'
+local LrBinding = import 'LrBinding'
+local LrView = import 'LrView'
 
 --can i write backup info to CR2?
---photo:addKeyword( keyword )
---photo:createDevelopSnapshot( snapshotName, updateInPlace )
 --photo:getDevelopSettings()
 --photo:applyDevelopPreset( preset, plugin )
-
---local f = assert(io.open(filename, mode))
---f:write(message)
-
 
 local logger = LrLogger('CorrectWhiteBalance')
 logger:enable("logfile")
@@ -61,6 +58,40 @@ function PhotoProcessor.runCmd(cmd)
    --todo:handle errors
    f:close()
    return s
+end
+
+function PhotoProcessor.getSnapshotName()
+   local r = "Untitled"
+   LrFunctionContext.callWithContext("getSnapshotName", function(context)
+      local props = LrBinding.makePropertyTable(context)
+      props.name = "Untitled"
+
+      local f = LrView.osFactory()
+      local c = f:row {
+         bind_to_object = props,
+         f:edit_field {
+            value = LrView.bind("name")
+         },
+      }
+
+      local result = LrDialogs.presentModalDialog({
+            title = "Custom",
+            contents = c
+      })
+
+      r = props.name
+   end)
+   return r
+end
+
+function PhotoProcessor.createSnapshot(photo)
+   local name = PhotoProcessor.getSnapshotName()
+   logger:trace("Creating snapshot", name, photo.path)
+
+   local catalog = LrApplication.activeCatalog()
+   catalog:withWriteAccessDo("Create Snapshot", function(context) 
+         photo:createDevelopSnapshot(name, true)
+   end, { timeout=10 })
 end
 
 function getSidecarFilename(filename)
@@ -320,7 +351,8 @@ function PhotoProcessor.processPhoto(photo, action)
                PhotoProcessor.loadSidecar(photo)
             elseif action == "saveSidecar" then
                PhotoProcessor.saveSidecar(photo)
-
+            elseif action == "createSnapshot" then
+               PhotoProcessor.createSnapshot(photo)
             else
                logger:error("Unknown action: " .. action)
             end

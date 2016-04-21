@@ -35,5 +35,10 @@ return {
          title = "Load From Sidecar",
          file = "MenuItemLoadSidecar.lua",
       },
+      {
+         title = "Create Snapshot",
+         file = "MenuItemCreateSnapshot.lua",
+      },
+
    },
 }
