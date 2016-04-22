@@ -14,30 +14,37 @@ return {
       {
          title = "&Load Metadata",
          file = "MenuItemCheckWhiteBalance.lua",
+         enabledWhen = "photosSelected",
       },
       {
          title = "Clear Metadata",
          file = "MenuItemClearWhiteBalance.lua",
+         enabledWhen = "photosSelected",
       },
       {
          title = "&Save White Balance",
          file = "MenuItemSaveWhiteBalance.lua",
+         enabledWhen = "photosSelected",
       },
       {
          title = "&Revert White Balance",
          file = "MenuItemRevertWhiteBalance.lua",
+         enabledWhen = "photosSelected",
       },
       {
          title = "Save Sidecar",
          file = "MenuItemSaveSidecar.lua",
+         enabledWhen = "photosSelected",
       },
       {
          title = "Load From Sidecar",
          file = "MenuItemLoadSidecar.lua",
+         enabledWhen = "photosSelected",
       },
       {
          title = "Create Snapshot",
          file = "MenuItemCreateSnapshot.lua",
+         enabledWhen = "photosSelected",
       },
 
    },

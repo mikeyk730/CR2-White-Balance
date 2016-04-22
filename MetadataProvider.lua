@@ -35,14 +35,14 @@ return {
          version = 1
       },
       {
-         id = 'WB_RGGBLevelsAsShot',
-         title = LOC '$$$/Metadata/Fields/WB_RGGBLevelsAsShot=WB_RGGBLevelsAsShot',
+         id = 'WB_RGGBLevels',
+         title = LOC '$$$/Metadata/Fields/WB_RGGBLevels=WB_RGGBLevels',
          dataType = 'string',
          readOnly = true
       },
       {
-         id = 'WB_RGGBLevels',
-         title = LOC '$$$/Metadata/Fields/WB_RGGBLevels=WB_RGGBLevels',
+         id = 'WB_RGGBLevelsAsShot',
+         title = LOC '$$$/Metadata/Fields/WB_RGGBLevelsAsShot=WB_RGGBLevelsAsShot',
          dataType = 'string',
          readOnly = true
       },

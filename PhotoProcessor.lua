@@ -9,46 +9,35 @@ local LrView = import 'LrView'
 local LrStringUtils = import 'LrStringUtils'
 local LrProgressScope = import 'LrProgressScope'
 
---todo:can i write backup info to CR2 instead of sidecars?
+--todo:can i write backup info to CR2 instead of sidecars? could reuse adj fields
 --LrErrors.throwUserError( text )
---enabledWhen photosSelected:
-
---WB_RGGBLevelsCloudy=2162 1024 1024 1419
---ColorTempCloudy=6000
---WB_RGGBLevelsDaylight=2013 1024 1024 1544
---ColorTempDaylight=5200
---WB_RGGBLevelsTungsten=1444 1024 1024 2335
---ColorTempTungsten=3200
---WB_RGGBLevelsShade=2315 1024 1024 1311
---ColorTempShade=6982
-
---WB_RGGBLevelsFluorescent=1817 1024 1024 2180
---ColorTempFluorescent=3807
---WB_RGGBLevelsFlash=2226 1024 1024 1407
---ColorTempFlash=6228
-
---WB_RGGBLevelsAsShot=
---ColorTempAsShot=
---WB_RGGBLevelsAuto=
---ColorTempAuto=
---WB_RGGBLevelsMeasured=1095 1029 1017 2982
---ColorTempMeasured=2439
-
 
 local logger = LrLogger('CorrectWhiteBalance')
 logger:enable("logfile")
 
 PhotoProcessor = {}
+
 --todo:test with missing exe
 PhotoProcessor.exiftool = 'exiftool.exe'
+
+PhotoProcessor.whiteBalanceOptions = {
+   "Auto",
+   "Daylight",
+   "Cloudy",
+   "Shade",
+   "Tungsten",
+   "Fluorescent",
+   "Flash",
+   "Measured", --todo:What is this?
+}
 
 function PhotoProcessor.getMetadataFields()
    --todo:get programatically
    return {
       'fileStatus', 
       'WhiteBalance', 
-      'WB_RGGBLevelsAsShot', 
       'WB_RGGBLevels', 
+      'WB_RGGBLevelsAsShot', 
       'ColorTempAsShot', 
    }
 end
@@ -59,8 +48,8 @@ function PhotoProcessor.getMetadataSet()
    return {
       fileStatus = true,
       WhiteBalance = true,
-      WB_RGGBLevelsAsShot = true,
       WB_RGGBLevels = true,
+      WB_RGGBLevelsAsShot = true,
       ColorTempAsShot = true,
    }
 end
@@ -89,9 +78,9 @@ function PhotoProcessor.runCmd(cmd)
    return s
 end
 
-function PhotoProcessor.getSnapshotName()
+function PhotoProcessor.promptForSnapshotName()
    local r = "Untitled"
-   LrFunctionContext.callWithContext("getSnapshotName", function(context)
+   LrFunctionContext.callWithContext("promptForSnapshotName", function(context)
       local props = LrBinding.makePropertyTable(context)
       props.name = "Untitled"
 
@@ -114,7 +103,7 @@ function PhotoProcessor.getSnapshotName()
 end
 
 function PhotoProcessor.createSnapshot(photo)
-   local name = PhotoProcessor.getSnapshotName()
+   local name = PhotoProcessor.promptForSnapshotName()
    logger:trace("Creating snapshot", name, photo.path)
 
    local catalog = LrApplication.activeCatalog()
@@ -123,13 +112,13 @@ function PhotoProcessor.createSnapshot(photo)
    end, { timeout=60 })
 end
 
-function getSidecarFilename(filename)
-   return filename..".wb"
+function PhotoProcessor.getSidecarFilename(photo)
+   return photo.path .. ".wb"
 end
 
 --Reads white balance metadata from the photo's sidecar file.  Returns a table of the values
 function PhotoProcessor.readMetadataFromSidecar(photo)
-   local sidecar = getSidecarFilename(photo.path)
+   local sidecar = PhotoProcessor.getSidecarFilename(photo)
 
    if not LrFileUtils.exists(sidecar) then
       logger:trace("Sidecar doesn't exisit", sidecar)
@@ -145,7 +134,7 @@ end
 --Writes the supplied metadata to a sidecar file.
 function PhotoProcessor.writeMetadataToSidecar(photo, values)
    values.fileStatus = nil
-   local sidecar = getSidecarFilename(photo.path)
+   local sidecar = PhotoProcessor.getSidecarFilename(photo)
    logger:trace("Writing values to sidecar", sidecar)
    local f = assert(io.open(sidecar, "w"))
    for k, v in pairs(values) do
@@ -278,7 +267,7 @@ function PhotoProcessor.clearMetadataFields(photo)
 end
 
 
-function PhotoProcessor.saveFile(photo)
+function PhotoProcessor.saveFile(photo, newWb)
    --TODO: checks before running command
    --dont save unless 3 values are cached in metadata
    logger:trace("Overwriting original settings", photo.path)
@@ -289,8 +278,8 @@ function PhotoProcessor.saveFile(photo)
       return
    end
 
-   local args = '-tagsfromfile "%s" "-WhiteBalance=Auto" "-WB_RGGBLevelsAsShot<WB_RGGBLevelsAuto" "-WB_RGGBLevels<WB_RGGBLevelsAuto" "-ColorTempAsShot<ColorTempAuto" "%s"'
-   local cmd = string.format(PhotoProcessor.exiftool .. " " .. args, photo.path, photo.path)
+   local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-WB_RGGBLevels<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
+   local cmd = PhotoProcessor.exiftool .. " " .. args,
 
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
@@ -305,34 +294,20 @@ end
 function PhotoProcessor.revertFile(photo)
    logger:trace("Reverting original settings", photo.path)
 
-   local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
-   if status ~= 'changedOnDisk' then
-      logger:trace("Can't revert file", status,  photo.path)
+   metadata = PhotoProcessor.getMetadataTable()
+
+   if metadata.fileStatus ~= 'changedOnDisk' then
+      logger:trace("Can't revert file", metadata.fileStatus,  photo.path)
       return
    end
 
-   local v = nil
-   local args = ''
+   assert(metadata.WhiteBalance)
+   assert(metadata.WB_RGGBLevelsAsShot)
+   assert(metadata.WB_RGGBLevels)
+   assert(metadata.ColorTempAsShot)
 
-   --TODO:test error handling
-   --do by iteration
-   v = photo:getPropertyForPlugin(_PLUGIN, 'WhiteBalance', nil)
-   if v == nil then error('required field not set') end
-   args = args .. '"-WhiteBalance=' .. v .. '" '
-   
-   v = photo:getPropertyForPlugin(_PLUGIN, 'WB_RGGBLevelsAsShot', nil)
-   if v == nil then error('required field not set') end
-   args = args .. '"-WB_RGGBLevelsAsShot=' .. v .. '" '
-
-   v = photo:getPropertyForPlugin(_PLUGIN, 'WB_RGGBLevels', nil)
-   if v == nil then error('required field not set') end
-   args = args .. '"-WB_RGGBLevels=' .. v .. '" '
-
-   v = photo:getPropertyForPlugin(_PLUGIN, 'ColorTempAsShot', nil)
-   if v == nil then error('required field not set') end
-   args = args .. '"-ColorTempAsShot=' .. v .. '" '
-
-   local cmd = string.format(PhotoProcessor.exiftool .. ' %s "%s"', args, photo.path)
+   local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-WB_RGGBLevels=%s" "-ColorTempAsShot=%s" "%s"', metadata.WhiteBalance, metadata.WB_RGGBLevelsAsShot, metadata.WB_RGGBLevels, metadata.ColorTempAsShot, photo.path)
+   local cmd = PhotoProcessor.exiftool .. " " .. args
 
    --todo:check output
    local output = PhotoProcessor.runCmd(cmd)
@@ -372,7 +347,7 @@ function PhotoProcessor.processPhoto(photo, action)
             if action == "check" then
                PhotoProcessor.cacheMetadata(photo)
             elseif action == "save" then
-               PhotoProcessor.saveFile(photo)
+               PhotoProcessor.saveFile(photo, "Auto")
             elseif action == "revert" then
                PhotoProcessor.revertFile(photo)
             elseif action == "clear" then
