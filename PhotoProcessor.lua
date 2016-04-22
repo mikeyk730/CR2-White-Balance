@@ -6,10 +6,12 @@ local LrFileUtils = import 'LrFileUtils'
 local LrFunctionContext = import 'LrFunctionContext'
 local LrBinding = import 'LrBinding'
 local LrView = import 'LrView'
+local LrStringUtils = import 'LrStringUtils'
+local LrProgressScope = import 'LrProgressScope'
 
---can i write backup info to CR2?
---photo:getDevelopSettings()
---photo:applyDevelopPreset( preset, plugin )
+--todo:can i write backup info to CR2 instead of sidecars?
+--LrErrors.throwUserError( text )
+--enabledWhen photosSelected:
 
 local logger = LrLogger('CorrectWhiteBalance')
 logger:enable("logfile")
@@ -32,10 +34,21 @@ function PhotoProcessor.getMetadataFields()
    }
 end
 
---Remove whitespace from the begining and end of the input string
-function trim(s)
-  return (s:gsub("^%s*(.-)%s*$", "%1"))
+
+function PhotoProcessor.getMetadataSet()
+   --todo:get programatically
+   return {
+      fileStatus = true,
+      WhiteBalance = true,
+      WhiteBalanceAdj = true,
+      WB_RGGBLevelsAsShot = true,
+      WB_RGGBLevels = true,
+      WBAdjRGGBLevels = true,
+      ColorTempAsShot = true,
+      WBAdjColorTem = true,
+   }
 end
+
 
 --Split the input string on the provided separator
 function split(inputstr, sep)
@@ -55,7 +68,7 @@ function PhotoProcessor.runCmd(cmd)
 
    local f = assert(io.popen(cmd, 'r'))
    local s = assert(f:read('*a'))
-   --todo:handle errors
+   --todo:check exit code, handle errors
    f:close()
    return s
 end
@@ -91,7 +104,7 @@ function PhotoProcessor.createSnapshot(photo)
    local catalog = LrApplication.activeCatalog()
    catalog:withWriteAccessDo("Create Snapshot", function(context) 
          photo:createDevelopSnapshot(name, true)
-   end, { timeout=10 })
+   end, { timeout=60 })
 end
 
 function getSidecarFilename(filename)
@@ -110,7 +123,7 @@ function PhotoProcessor.readMetadataFromSidecar(photo)
    local content = LrFileUtils.readFile(sidecar)
    logger:trace("sidecar content",content)
    local values = PhotoProcessor.parseArgOutput(content)
-   PhotoProcessor.saveMetadataToCatalog(photo, values)
+   PhotoProcessor.saveMetadataToCatalog(photo, values, false)
 end
 
 --Writes the supplied metadata to a sidecar file.
@@ -120,7 +133,7 @@ function PhotoProcessor.writeMetadataToSidecar(photo, values)
    logger:trace("Writing values to sidecar", sidecar)
    local f = assert(io.open(sidecar, "w"))
    for k, v in pairs(values) do
-      logger:trace(k,v)
+      --logger:trace(k,v)
       f:write("-"..k.."="..v.."\n")
    end
    f:close()
@@ -159,12 +172,22 @@ function PhotoProcessor.loadSidecar(photo)
 end
 
 function PhotoProcessor.parseArgOutput(output)
+   local metadataSet = PhotoProcessor.getMetadataSet()
    local t = {}
+
    local lines = split(output, '\n')
    for i, line in pairs(lines) do
       k, v = string.match(line, '-([%w_]+)=(.+)')
-      logger:trace("parseArgOutput",k,v)
-      t[trim(k)]=trim(v)
+      if k and v then
+         k = LrStringUtils.trimWhitespace(k)
+         v = LrStringUtils.trimWhitespace(v)
+         --logger:trace("parseArgOutput",k,v)
+         if metadataSet[k] then
+            t[k]=v
+         else
+            logger:warn("dropping key", k)
+         end
+      end
    end
    
    return t
@@ -181,32 +204,35 @@ function PhotoProcessor.readMetadataFromFile(photo)
 end
 
 --Saves the provided white balance metadata into the catalog 
-function PhotoProcessor.saveMetadataToCatalog(photo, values)
-   --TODO: checks before running command
-   --dont set data if was !auto
-   --todo: validate input
+function PhotoProcessor.saveMetadataToCatalog(photo, values, writeSidecar)
+   --LrTasks.startAsyncTask(function(context)
+        --TODO: checks before running command
+        --dont set data if was !auto
+        --todo: validate input
 
-   local wb = values['WhiteBalance']
-   local catalog = LrApplication.activeCatalog()
-
-   if wb == nil then
-      logger:error("Failed to read white balance", photo.path)
-   elseif wb == "Auto" then
-      catalog:withPrivateWriteAccessDo(function(context) 
-            logger:trace("Saving Metadata Auto", photo.path)
-            photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'shotInAuto')
-      end, { timeout=10 })      
-   else
-      catalog:withPrivateWriteAccessDo(function(context) 
-            for k, v in pairs(values) do
-               logger:trace("Saving Metadata", k, v, photo.path)
-               photo:setPropertyForPlugin(_PLUGIN, k, v)
-            end
-            logger:trace("Saving Metadata", wb, photo.path)
-            photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
-      end, { timeout=10 })
-      PhotoProcessor.writeMetadataToSidecar(photo, values)
-   end
+        local wb = values['WhiteBalance']
+        local catalog = LrApplication.activeCatalog()
+        
+        if wb == nil then
+           logger:error("Failed to read white balance", photo.path)
+        elseif wb == "Auto" then
+           catalog:withPrivateWriteAccessDo(function(context) 
+                 logger:trace("Saving Metadata Auto", photo.path)
+                 photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'shotInAuto')
+           end, { timeout=60 })      
+        else
+           if writeSidecar then
+              PhotoProcessor.writeMetadataToSidecar(photo, values)
+           end
+           catalog:withPrivateWriteAccessDo(function(context) 
+                 logger:trace("Saving Metadata", wb, photo.path)
+                 for k, v in pairs(values) do
+                    photo:setPropertyForPlugin(_PLUGIN, k, v)
+                 end
+                 photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
+           end, { timeout=60 })
+        end
+   --end)
 end
 
 function PhotoProcessor.cacheMetadata(photo)
@@ -221,21 +247,20 @@ function PhotoProcessor.cacheMetadata(photo)
    end
 
    local values = PhotoProcessor.readMetadataFromFile(photo)
-   PhotoProcessor.saveMetadataToCatalog(photo, values)
+   PhotoProcessor.saveMetadataToCatalog(photo, values, true)
 end
 
 function PhotoProcessor.clearMetadataFields(photo)
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
          logger:trace("Clearing metadata", photo.path)
-         --todo: can we get all fields programatically?
          local keys = PhotoProcessor.getMetadataFields()
          for i, k in ipairs(keys) do            
             photo:setPropertyForPlugin(_PLUGIN, k, nil)
          end
-   end, { timeout=10 })      
-   
+   end, { timeout=60 })      
 end
+
 
 function PhotoProcessor.saveFile(photo)
    --TODO: checks before running command
@@ -254,7 +279,7 @@ function PhotoProcessor.saveFile(photo)
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
          photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'changedOnDisk')
-   end, { timeout=10 })
+   end, { timeout=60 })
 
    --todo:check return value,
    local output = PhotoProcessor.runCmd(cmd)
@@ -274,6 +299,7 @@ function PhotoProcessor.revertFile(photo)
    local args = ''
 
    --TODO:test error handling
+   --do by iteration
    v = photo:getPropertyForPlugin(_PLUGIN, 'WhiteBalance', nil)
    if v == nil then error('required field not set') end
    args = args .. '"-WhiteBalance=' .. v .. '" '
@@ -311,7 +337,7 @@ function PhotoProcessor.revertFile(photo)
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
          photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
-   end, { timeout=10 })
+   end, { timeout=60 })
 end
 
 function PhotoProcessor.clearMetadata(photo)
@@ -325,9 +351,10 @@ function PhotoProcessor.clearMetadata(photo)
    end
 end
 
+PhotoProcessor.taskCount = 0
 
 function PhotoProcessor.processPhoto(photo, action)
-   LrTasks.startAsyncTask(function(context)
+   --LrTasks.startAsyncTask(function(context)
          local available = photo:checkPhotoAvailability()
          if available then         
 
@@ -359,7 +386,7 @@ function PhotoProcessor.processPhoto(photo, action)
          else
             logger:warn("Photo not available: " .. photo.path)
          end
-   end)
+   --end)
 end
 
 --Returns a table of the files that are currently selected
@@ -378,8 +405,27 @@ end
 --Main entry point for the scripts associated with the menu items
 function PhotoProcessor.processPhotos(action)
    local photos = PhotoProcessor.getSelectedPhotos()
-   for k,v in ipairs(photos) do
-      PhotoProcessor.processPhoto(v, action)
-   end
+   local totalPhotos = #photos
+   logger:trace("Starting task", action, totalPhotos)
+   --todo:rework so each photo can be a task
+   LrTasks.startAsyncTask(function(context)
+         local progressScope = LrProgressScope {title=action.." "..totalPhotos.." photos"}
+         --todo:doens't work
+         --progressScope:attachToFunctionContext(context)
+         progressScope:setCancelable(true)
+
+         for i,v in ipairs(photos) do
+            logger:trace("Canceled task", action, i)
+            if progressScope:isCanceled() then 
+               break
+            end
+            progressScope:setPortionComplete(i, totalPhotos)
+            progressScope:setCaption(action.." "..i.." of "..totalPhotos)
+            PhotoProcessor.processPhoto(v, action)
+         end
+
+         logger:trace("Completed task", action, totalPhotos)
+         progressScope:done()
+   end)
 end
 
