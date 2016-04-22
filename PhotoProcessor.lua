@@ -310,6 +310,10 @@ function PhotoProcessor.runCommandSave(photo, newWb)
    end
 
    logger:trace("Saving metadata to file", photo.path)
+   PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
+end
+
+function PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
    PhotoProcessor.expectValidWbSelection(newWb)
    PhotoProcessor.expectAllMetadata(metadata)
    local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-WB_RGGBLevels<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
@@ -343,6 +347,10 @@ function PhotoProcessor.runCommandRevert(photo)
    end
 
    logger:trace("Reverting file", photo.path)
+   PhotoProcessor.restoreFileMetadata(photo, metadata)
+end
+
+function PhotoProcessor.restoreFileMetadata(photo, metadata)
    PhotoProcessor.expectAllMetadata(metadata)
    local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-WB_RGGBLevels=%s" "-ColorTempAsShot=%s" "%s"',
                               metadata.WhiteBalance, metadata.WB_RGGBLevelsAsShot, 
@@ -371,11 +379,12 @@ function PhotoProcessor.runCommandClear(photo)
    --Files that have changed on disk can't be cleared since the original
    --information would be lost
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
-   if status == 'loadedMetadata' or status == 'shotInAuto' then
-      PhotoProcessor.clearMetadataFromCatalog(photo)
-   else
+   if status ~= 'loadedMetadata' and status ~= 'shotInAuto' then
       logger:trace("Can't clear metadata", status, photo.path)
    end
+
+   logger:trace("Clearing metadata", photo.path)
+   PhotoProcessor.clearMetadataFromCatalog(photo)
 end
 
 
