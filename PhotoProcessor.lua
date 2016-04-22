@@ -71,6 +71,10 @@ function PhotoProcessor.expectAllMetadata(metadata)
    assert(metadata.ColorTempAsShot)
 end
 
+function PhotoProcessor.expectValidWbSelection(wb)
+   --todo:verify that wb is in whiteBalanceOptions
+end
+
 --Shell execute the provided command.  Return the output of the command
 function PhotoProcessor.runCmd(cmd)
    logger:trace("Running command ", '"'..cmd..'"')
@@ -247,7 +251,7 @@ function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
 end
 
 function PhotoProcessor.runCommandCheck(photo)
-   logger:trace("Entering cacheMetadata", photo.path)
+   logger:trace("Entering runCommandCheck", photo.path)
 
    --Skip files whose metadata is already saved in the catalog
    local catalog = LrApplication.activeCatalog()
@@ -257,6 +261,7 @@ function PhotoProcessor.runCommandCheck(photo)
       return
    end
 
+   logger:trace("Reading metadata", photo.path)
    local metadata = PhotoProcessor.readMetadataFromFile(photo)
    PhotoProcessor.saveMetadataToCatalog(photo, metadata, true)
 end
@@ -273,17 +278,21 @@ function PhotoProcessor.clearMetadataFromCatalog(photo)
 end
 
 
+--Set new white balance metadata into the image.  The implementation uses 
+--exiftool to modify image metadata, which means this is a destructive operation
 function PhotoProcessor.runCommandSave(photo, newWb)
-   --TODO: checks before running command
-   --dont save unless 3 values are cached in metadata
-   logger:trace("Overwriting original settings", photo.path)
+   logger:trace("Entering runCommandSave", photo.path)
 
-   local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
-   if status ~= 'loadedMetadata' then
-      logger:trace("Can't save file", status, photo.path)
+   --Don't write the file unless the original metadata is stored in the catalog
+   local metadata = PhotoProcessor.getMetadataFromCatalog()
+   if metadata.fileStatus ~= 'loadedMetadata' then
+      logger:trace("Can't save file", metadata.fileStatus, photo.path)
       return
    end
 
+   logger:trace("Saving file", photo.path)
+   PhotoProcessor.expectValidWbSelection(newWb)
+   PhotoProcessor.expectAllMetadata(metadata)
    local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-WB_RGGBLevels<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
    local cmd = PhotoProcessor.exiftool .. " " .. args,
 
@@ -302,12 +311,13 @@ end
 
 
 --Restores the original white balance to the image.  The implementation uses 
---exiftool to overwrite image metadata with metadata stored in the catalog
+--exiftool to overwrite image metadata with metadata stored in the catalog.
+--This is a destructive operation
 function PhotoProcessor.runCommandRevert(photo)
    logger:trace("Entering runCommandRevert", photo.path)
 
    --Only saved files can be reverted
-   metadata = PhotoProcessor.getMetadataFromCatalog()
+   local metadata = PhotoProcessor.getMetadataFromCatalog()
    if metadata.fileStatus ~= 'changedOnDisk' then
       logger:trace("Can't revert file", metadata.fileStatus, photo.path)
       return
