@@ -137,19 +137,11 @@ function PhotoProcessor.promptForSnapshotName()
    return r
 end
 
-function PhotoProcessor.runCommandCreateSnapshot(photo)
-   local name = PhotoProcessor.promptForSnapshotName()
-   logger:trace("Creating snapshot", name, photo.path)
-
-   local catalog = LrApplication.activeCatalog()
-   catalog:withWriteAccessDo("Create Snapshot", function(context) 
-         photo:createDevelopSnapshot(name, true)
-   end, { timeout=60 })
-end
 
 function PhotoProcessor.getSidecarFilename(photo)
    return photo.path .. ".wb"
 end
+
 
 --Reads white balance metadata from the photo's sidecar file.  Returns a table of the values
 function PhotoProcessor.readMetadataFromSidecar(photo)
@@ -165,8 +157,9 @@ function PhotoProcessor.readMetadataFromSidecar(photo)
    return PhotoProcessor.parseArgOutput(content)
 end
 
+
 --Writes the supplied metadata to a sidecar file.
-function PhotoProcessor.writeMetadataToSidecar(photo, metadata)
+function PhotoProcessor.saveMetadataToSidecar(photo, metadata)
    metadata.fileStatus = nil
    local sidecar = PhotoProcessor.getSidecarFilename(photo)
    logger:trace("Writing metadata to sidecar", sidecar)
@@ -178,7 +171,8 @@ function PhotoProcessor.writeMetadataToSidecar(photo, metadata)
    f:close()
 end
 
-function PhotoProcessor.getMetadataFromCatalog(photo)
+
+function PhotoProcessor.loadMetadataFromCatalog(photo)
    local metadata = {}
    local keys = PhotoProcessor.getMetadataFields()
    for i, k in ipairs(keys) do
@@ -222,7 +216,7 @@ function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
         else
            PhotoProcessor.expectAllMetadata(metadata)
            if writeSidecar then
-              PhotoProcessor.writeMetadataToSidecar(photo, metadata)
+              PhotoProcessor.saveMetadataToSidecar(photo, metadata)
            end
            catalog:withPrivateWriteAccessDo(function(context) 
                  logger:trace("Saving Metadata", wb, photo.path)
@@ -290,19 +284,36 @@ function PhotoProcessor.clearMetadataFromCatalog(photo)
 end
 
 
+--Create a develop snapshot fro the supplied photo.  If no name is supplied
+--the user will be prompted with a dialog
+function PhotoProcessor.runCommandCreateSnapshot(photo, name)
+   logger:trace("Entering runCommandCreateSnapshot", photo.path)
+
+   if name == nil then
+      name = PhotoProcessor.promptForSnapshotName()
+   end
+
+   logger:trace("Creating snapshot", name, photo.path)
+   local catalog = LrApplication.activeCatalog()
+   catalog:withWriteAccessDo("Create Snapshot", function(context) 
+         photo:createDevelopSnapshot(name, true)
+   end, { timeout=60 })
+end
+
+
 --Save metadata from the catalog into a sidecar file
 function PhotoProcessor.runCommandSaveSidecar(photo)
    logger:trace("Entering runCommandSaveSidecar", photo.path)
 
    --Don't write sidecar if there's no metadata in the catalog
-   local metadata = PhotoProcessor.getMetadataFromCatalog(photo)
+   local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
    if metadata.fileStatus ~= 'loadedMetadata' and metadata.fileStatus ~= 'changedOnDisk' then
       logger:trace("Can't save sidecar", metadata.fileStatus, photo.path)
       return
    end
 
    logger:trace("Saving metadata to sidecar", photo.path)
-   PhotoProcessor.writeMetadataToSidecar(photo, metadata)
+   PhotoProcessor.saveMetadataToSidecar(photo, metadata)
 end
 
 
@@ -346,7 +357,7 @@ function PhotoProcessor.runCommandSave(photo, newWb)
    logger:trace("Entering runCommandSave", photo.path)
 
    --Don't write the file unless the original metadata is stored in the catalog
-   local metadata = PhotoProcessor.getMetadataFromCatalog()
+   local metadata = PhotoProcessor.loadMetadataFromCatalog()
    if metadata.fileStatus ~= 'loadedMetadata' then
       logger:trace("Can't save file", metadata.fileStatus, photo.path)
       return
@@ -364,7 +375,7 @@ function PhotoProcessor.runCommandRevert(photo)
    logger:trace("Entering runCommandRevert", photo.path)
 
    --Only saved files can be reverted
-   local metadata = PhotoProcessor.getMetadataFromCatalog()
+   local metadata = PhotoProcessor.loadMetadataFromCatalog()
    if metadata.fileStatus ~= 'changedOnDisk' then
       logger:trace("Can't revert file", metadata.fileStatus, photo.path)
       return
