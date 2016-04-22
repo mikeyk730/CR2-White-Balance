@@ -148,7 +148,7 @@ function PhotoProcessor.writeMetadataToSidecar(photo, metadata)
    f:close()
 end
 
-function PhotoProcessor.getMetadataTable(photo)
+function PhotoProcessor.getMetadataFromCatalog(photo)
    local metadata = {}
    local keys = PhotoProcessor.getMetadataFields()
    for i, k in ipairs(keys) do
@@ -162,7 +162,7 @@ end
 
 function PhotoProcessor.runCommandSaveSidecar(photo)
    logger:trace("Entering saveSidecar")
-   local metadata = PhotoProcessor.getMetadataTable(photo)
+   local metadata = PhotoProcessor.getMetadataFromCatalog(photo)
    if metadata.fileStatus == 'loadedMetadata' or metadata.fileStatus == 'changedOnDisk' then
       PhotoProcessor.writeMetadataToSidecar(photo, metadata)
    else
@@ -261,7 +261,7 @@ function PhotoProcessor.runCommandCheck(photo)
    PhotoProcessor.saveMetadataToCatalog(photo, metadata, true)
 end
 
-function PhotoProcessor.clearMetadataFieldsInCatalog(photo)
+function PhotoProcessor.clearMetadataFromCatalog(photo)
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
          logger:trace("Clearing metadata", photo.path)
@@ -300,24 +300,30 @@ function PhotoProcessor.runCommandSave(photo, newWb)
    end
 end
 
+
+--Restores the original white balance to the image.  The implementation uses 
+--exiftool to overwrite image metadata with metadata stored in the catalog
 function PhotoProcessor.runCommandRevert(photo)
-   logger:trace("Reverting original settings", photo.path)
+   logger:trace("Entering runCommandRevert", photo.path)
 
-   metadata = PhotoProcessor.getMetadataTable()
-
+   --Only saved files can be reverted
+   metadata = PhotoProcessor.getMetadataFromCatalog()
    if metadata.fileStatus ~= 'changedOnDisk' then
-      logger:trace("Can't revert file", metadata.fileStatus,  photo.path)
+      logger:trace("Can't revert file", metadata.fileStatus, photo.path)
       return
    end
 
+   logger:trace("Reverting file", photo.path)
    PhotoProcessor.expectAllMetadata(metadata)
-
-   local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-WB_RGGBLevels=%s" "-ColorTempAsShot=%s" "%s"', metadata.WhiteBalance, metadata.WB_RGGBLevelsAsShot, metadata.WB_RGGBLevels, metadata.ColorTempAsShot, photo.path)
+   local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-WB_RGGBLevels=%s" "-ColorTempAsShot=%s" "%s"',
+                              metadata.WhiteBalance, metadata.WB_RGGBLevelsAsShot, 
+                              metadata.WB_RGGBLevels, metadata.ColorTempAsShot, 
+                              photo.path)
    local cmd = PhotoProcessor.exiftool .. " " .. args
 
    local output = PhotoProcessor.runCmd(cmd)
    if not string.find(output, "1 image files updated") then
-      logger:error("revert failed")
+      logger:error("Revert failed")
       logger:trace(output)
       LrErrors.throwUserError("Revert failed")
    end
@@ -328,18 +334,21 @@ function PhotoProcessor.runCommandRevert(photo)
    end, { timeout=60 })
 end
 
-function PhotoProcessor.runCommandClear(photo)
-   logger:trace("Entering clearMetadata", photo.path)
 
+--Clears white balance metadata from the Lightroom catalog.
+function PhotoProcessor.runCommandClear(photo)
+   logger:trace("Entering runCommandClear", photo.path)
+
+   --Files that have changed on disk can't be cleared since the original
+   --information would be lost
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
    if status == 'loadedMetadata' or status == 'shotInAuto' then
-      PhotoProcessor.clearMetadataFieldsInCatalog(photo)
+      PhotoProcessor.clearMetadataFromCatalog(photo)
    else
       logger:trace("Can't clear metadata", status, photo.path)
    end
 end
 
-PhotoProcessor.taskCount = 0
 
 function PhotoProcessor.processPhoto(photo, action)
    --LrTasks.startAsyncTask(function(context)
@@ -377,7 +386,8 @@ function PhotoProcessor.processPhoto(photo, action)
    --end)
 end
 
---Returns a table of the files that are currently selected
+
+--Returns a table of the files that are currently selected in Lightroom
 function PhotoProcessor.getSelectedPhotos()
    local catalog = LrApplication.activeCatalog()
    local photo = catalog:getTargetPhoto()
@@ -390,7 +400,8 @@ function PhotoProcessor.getSelectedPhotos()
    end
 end
 
---Main entry point for the scripts associated with the menu items
+
+--Main entry point for scripts associated with menu items
 function PhotoProcessor.processPhotos(action)
    local photos = PhotoProcessor.getSelectedPhotos()
    local totalPhotos = #photos
