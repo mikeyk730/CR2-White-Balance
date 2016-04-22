@@ -8,9 +8,8 @@ local LrBinding = import 'LrBinding'
 local LrView = import 'LrView'
 local LrStringUtils = import 'LrStringUtils'
 local LrProgressScope = import 'LrProgressScope'
-
+local LrErrors = import 'LrErrors'
 --todo:can i write backup info to CR2 instead of sidecars? could reuse adj fields
---LrErrors.throwUserError( text )
 
 local logger = LrLogger('CorrectWhiteBalance')
 logger:enable("logfile")
@@ -286,9 +285,12 @@ function PhotoProcessor.saveFile(photo, newWb)
          photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'changedOnDisk')
    end, { timeout=60 })
 
-   --todo:check return value,
    local output = PhotoProcessor.runCmd(cmd)
-   logger:trace(output)
+   if not string.find(output, "1 image files updated") then
+      logger:error("Save failed")
+      logger:trace(output)
+      LrErrors.throwUserError("Save failed")
+   end
 end
 
 function PhotoProcessor.revertFile(photo)
@@ -309,9 +311,13 @@ function PhotoProcessor.revertFile(photo)
    local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-WB_RGGBLevels=%s" "-ColorTempAsShot=%s" "%s"', metadata.WhiteBalance, metadata.WB_RGGBLevelsAsShot, metadata.WB_RGGBLevels, metadata.ColorTempAsShot, photo.path)
    local cmd = PhotoProcessor.exiftool .. " " .. args
 
-   --todo:check output
    local output = PhotoProcessor.runCmd(cmd)
-   logger:trace(output)
+   if not string.find(output, "1 image files updated") then
+      logger:error("revert failed")
+      logger:trace(output)
+      LrErrors.throwUserError("Revert failed")
+   end
+
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
          photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
@@ -406,4 +412,3 @@ function PhotoProcessor.processPhotos(action)
          progressScope:done()
    end)
 end
-
