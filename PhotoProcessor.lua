@@ -208,33 +208,21 @@ end
 --Saves the provided white balance metadata into the catalog 
 function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
    --LrTasks.startAsyncTask(function(context)
-        --TODO: checks before running command
-        --dont set data if was !auto
-        --todo: validate input
-
-        local wb = metadata['WhiteBalance']
-        local catalog = LrApplication.activeCatalog()
-        
-        if wb == nil then
-           logger:error("Failed to read white balance", photo.path)
-        --elseif wb == "Auto" then --todo: stop treating auto special
-        --   catalog:withPrivateWriteAccessDo(function(context) 
-        --         logger:trace("Saving Metadata Auto", photo.path)
-        --         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'shotInAuto')
-        --   end, { timeout=60 })      
-        else
-           PhotoProcessor.expectAllMetadata(metadata)
-           if writeSidecar then
-              PhotoProcessor.saveMetadataToSidecar(photo, metadata)
-           end
-           catalog:withPrivateWriteAccessDo(function(context) 
-                 logger:trace("Saving Metadata", wb, photo.path)
-                 for k, v in pairs(metadata) do
-                    photo:setPropertyForPlugin(_PLUGIN, k, v)
-                 end
-                 photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
-           end, { timeout=60 })
-        end
+         PhotoProcessor.expectAllMetadata(metadata)
+         
+         if writeSidecar then
+            PhotoProcessor.saveMetadataToSidecar(photo, metadata)
+         end
+         
+         local catalog = LrApplication.activeCatalog()
+         catalog:withPrivateWriteAccessDo(function(context) 
+               logger:trace("Have write access to catalog", photo.path)
+               metadata.fileStatus = nil
+               for k, v in pairs(metadata) do
+                  photo:setPropertyForPlugin(_PLUGIN, k, v)
+               end
+               photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
+         end, { timeout=60 })
    --end)
 end
 

@@ -17,7 +17,7 @@ return {
    metadataFieldsForPhotos = {
       {
          id = 'fileStatus',
-         title = LOC '$$$/Metadata/Fields/FileStatus=File Status',
+         title = LOC '$$$/Metadata/Fields/FileStatus=Metadata Status',
          dataType = 'enum',
          values = valuesFileStatus,
          readOnly = true,
@@ -51,6 +51,14 @@ return {
          title = LOC '$$$/Metadata/Fields/ColorTempAsShot=ColorTempAsShot',
          dataType = 'string',
          readOnly = true
+      },
+      {
+         id = 'WhiteBalanceOverride',
+         title = LOC '$$$/Metadata/Fields/CurrentWhiteBalance=Override',
+         dataType = 'string',
+         readOnly = true,
+         searchable = true,
+         browsable = true,
       },
    },
    schemaVersion = 1
