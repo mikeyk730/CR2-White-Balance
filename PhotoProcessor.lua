@@ -1,18 +1,30 @@
 local LrApplication = import 'LrApplication'
+local LrBinding = import 'LrBinding'
 local LrDialogs = import 'LrDialogs'
-local LrLogger = import 'LrLogger'
-local LrTasks = import 'LrTasks'
+local LrErrors = import 'LrErrors'
 local LrFileUtils = import 'LrFileUtils'
 local LrFunctionContext = import 'LrFunctionContext'
-local LrBinding = import 'LrBinding'
-local LrView = import 'LrView'
-local LrStringUtils = import 'LrStringUtils'
+local LrLogger = import 'LrLogger'
 local LrProgressScope = import 'LrProgressScope'
-local LrErrors = import 'LrErrors'
+local LrStringUtils = import 'LrStringUtils'
+local LrTasks = import 'LrTasks'
+local LrView = import 'LrView'
 --todo:can i write backup info to CR2 instead of sidecars? could reuse adj fields
 
 local logger = LrLogger('CorrectWhiteBalance')
 logger:enable("logfile")
+
+--Split the input string on the provided separator
+function split(inputstr, sep)
+   if sep == nil then
+      sep = "%s"
+   end
+   local t={};
+   for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+      table.insert(t,str)
+   end
+   return t
+end
 
 PhotoProcessor = {}
 
@@ -41,7 +53,6 @@ function PhotoProcessor.getMetadataFields()
    }
 end
 
-
 function PhotoProcessor.getMetadataSet()
    --todo:get programatically
    return {
@@ -58,18 +69,6 @@ function PhotoProcessor.expectAllMetadata(metadata)
    assert(metadata.WB_RGGBLevelsAsShot)
    assert(metadata.WB_RGGBLevels)
    assert(metadata.ColorTempAsShot)
-end
-
---Split the input string on the provided separator
-function split(inputstr, sep)
-   if sep == nil then
-      sep = "%s"
-   end
-   local t={};
-   for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
-      table.insert(t,str)
-   end
-   return t
 end
 
 --Shell execute the provided command.  Return the output of the command
@@ -107,7 +106,7 @@ function PhotoProcessor.promptForSnapshotName()
    return r
 end
 
-function PhotoProcessor.createSnapshot(photo)
+function PhotoProcessor.runCommandCreateSnapshot(photo)
    local name = PhotoProcessor.promptForSnapshotName()
    logger:trace("Creating snapshot", name, photo.path)
 
@@ -161,7 +160,7 @@ function PhotoProcessor.getMetadataTable(photo)
    return metadata
 end
 
-function PhotoProcessor.saveSidecar(photo)
+function PhotoProcessor.runCommandSaveSidecar(photo)
    logger:trace("Entering saveSidecar")
    local metadata = PhotoProcessor.getMetadataTable(photo)
    if metadata.fileStatus == 'loadedMetadata' or metadata.fileStatus == 'changedOnDisk' then
@@ -171,7 +170,7 @@ function PhotoProcessor.saveSidecar(photo)
    end
 end
 
-function PhotoProcessor.loadSidecar(photo)
+function PhotoProcessor.runCommandLoadSidecar(photo)
    logger:trace("Entering loadSidecar", sidecar)
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
    if status ~= nil then
@@ -247,7 +246,7 @@ function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
    --end)
 end
 
-function PhotoProcessor.cacheMetadata(photo)
+function PhotoProcessor.runCommandCheck(photo)
    logger:trace("Entering cacheMetadata", photo.path)
 
    --Skip files whose metadata is already saved in the catalog
@@ -262,7 +261,7 @@ function PhotoProcessor.cacheMetadata(photo)
    PhotoProcessor.saveMetadataToCatalog(photo, metadata, true)
 end
 
-function PhotoProcessor.clearMetadataFields(photo)
+function PhotoProcessor.clearMetadataFieldsInCatalog(photo)
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
          logger:trace("Clearing metadata", photo.path)
@@ -274,7 +273,7 @@ function PhotoProcessor.clearMetadataFields(photo)
 end
 
 
-function PhotoProcessor.saveFile(photo, newWb)
+function PhotoProcessor.runCommandSave(photo, newWb)
    --TODO: checks before running command
    --dont save unless 3 values are cached in metadata
    logger:trace("Overwriting original settings", photo.path)
@@ -301,7 +300,7 @@ function PhotoProcessor.saveFile(photo, newWb)
    end
 end
 
-function PhotoProcessor.revertFile(photo)
+function PhotoProcessor.runCommandRevert(photo)
    logger:trace("Reverting original settings", photo.path)
 
    metadata = PhotoProcessor.getMetadataTable()
@@ -329,12 +328,12 @@ function PhotoProcessor.revertFile(photo)
    end, { timeout=60 })
 end
 
-function PhotoProcessor.clearMetadata(photo)
+function PhotoProcessor.runCommandClear(photo)
    logger:trace("Entering clearMetadata", photo.path)
 
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
    if status == 'loadedMetadata' or status == 'shotInAuto' then
-      PhotoProcessor.clearMetadataFields(photo)
+      PhotoProcessor.clearMetadataFieldsInCatalog(photo)
    else
       logger:trace("Can't clear metadata", status, photo.path)
    end
@@ -356,19 +355,19 @@ function PhotoProcessor.processPhoto(photo, action)
             end
 
             if action == "check" then
-               PhotoProcessor.cacheMetadata(photo)
+               PhotoProcessor.runCommandCheck(photo)
             elseif action == "save" then
-               PhotoProcessor.saveFile(photo, "Auto")
+               PhotoProcessor.runCommandSave(photo, "Auto")
             elseif action == "revert" then
-               PhotoProcessor.revertFile(photo)
+               PhotoProcessor.runCommandRevert(photo)
             elseif action == "clear" then
-               PhotoProcessor.clearMetadata(photo)
+               PhotoProcessor.runCommandClear(photo)
             elseif action == "loadSidecar" then
-               PhotoProcessor.loadSidecar(photo)
+               PhotoProcessor.runCommandLoadSidecar(photo)
             elseif action == "saveSidecar" then
-               PhotoProcessor.saveSidecar(photo)
+               PhotoProcessor.runCommandSaveSidecar(photo)
             elseif action == "createSnapshot" then
-               PhotoProcessor.createSnapshot(photo)
+               PhotoProcessor.runCommandCreateSnapshot(photo)
             else
                logger:error("Unknown action: " .. action)
             end
