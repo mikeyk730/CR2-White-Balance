@@ -53,6 +53,12 @@ function PhotoProcessor.getMetadataSet()
    }
 end
 
+function PhotoProcessor.expectAllMetadata(metadata)
+   assert(metadata.WhiteBalance)
+   assert(metadata.WB_RGGBLevelsAsShot)
+   assert(metadata.WB_RGGBLevels)
+   assert(metadata.ColorTempAsShot)
+end
 
 --Split the input string on the provided separator
 function split(inputstr, sep)
@@ -126,17 +132,17 @@ function PhotoProcessor.readMetadataFromSidecar(photo)
      
    local content = LrFileUtils.readFile(sidecar)
    logger:trace("sidecar content",content)
-   local values = PhotoProcessor.parseArgOutput(content)
-   PhotoProcessor.saveMetadataToCatalog(photo, values, false)
+   local metadata = PhotoProcessor.parseArgOutput(content)
+   PhotoProcessor.saveMetadataToCatalog(photo, metadata, false)
 end
 
 --Writes the supplied metadata to a sidecar file.
-function PhotoProcessor.writeMetadataToSidecar(photo, values)
-   values.fileStatus = nil
+function PhotoProcessor.writeMetadataToSidecar(photo, metadata)
+   metadata.fileStatus = nil
    local sidecar = PhotoProcessor.getSidecarFilename(photo)
-   logger:trace("Writing values to sidecar", sidecar)
+   logger:trace("Writing metadata to sidecar", sidecar)
    local f = assert(io.open(sidecar, "w"))
-   for k, v in pairs(values) do
+   for k, v in pairs(metadata) do
       --logger:trace(k,v)
       f:write("-"..k.."="..v.."\n")
    end
@@ -144,24 +150,24 @@ function PhotoProcessor.writeMetadataToSidecar(photo, values)
 end
 
 function PhotoProcessor.getMetadataTable(photo)
-   local values = {}
+   local metadata = {}
    local keys = PhotoProcessor.getMetadataFields()
    for i, k in ipairs(keys) do
       local v = photo:getPropertyForPlugin(_PLUGIN, k)
       if v then
-         values[k] = v
+         metadata[k] = v
       end
    end
-   return values
+   return metadata
 end
 
 function PhotoProcessor.saveSidecar(photo)
    logger:trace("Entering saveSidecar")
-   local values = PhotoProcessor.getMetadataTable(photo)
-   if values.fileStatus == 'loadedMetadata' or values.fileStatus == 'changedOnDisk' then
-      PhotoProcessor.writeMetadataToSidecar(photo, values)
+   local metadata = PhotoProcessor.getMetadataTable(photo)
+   if metadata.fileStatus == 'loadedMetadata' or metadata.fileStatus == 'changedOnDisk' then
+      PhotoProcessor.writeMetadataToSidecar(photo, metadata)
    else
-      logger:trace("Can't save sidecar", values.fileStatus)
+      logger:trace("Can't save sidecar", metadata.fileStatus)
    end
 end
 
@@ -194,6 +200,7 @@ function PhotoProcessor.parseArgOutput(output)
       end
    end
    
+   PhotoProcessor.expectAllMetadata(t)
    return t
 end
 
@@ -208,13 +215,13 @@ function PhotoProcessor.readMetadataFromFile(photo)
 end
 
 --Saves the provided white balance metadata into the catalog 
-function PhotoProcessor.saveMetadataToCatalog(photo, values, writeSidecar)
+function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
    --LrTasks.startAsyncTask(function(context)
         --TODO: checks before running command
         --dont set data if was !auto
         --todo: validate input
 
-        local wb = values['WhiteBalance']
+        local wb = metadata['WhiteBalance']
         local catalog = LrApplication.activeCatalog()
         
         if wb == nil then
@@ -225,12 +232,13 @@ function PhotoProcessor.saveMetadataToCatalog(photo, values, writeSidecar)
                  photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'shotInAuto')
            end, { timeout=60 })      
         else
+           PhotoProcessor.expectAllMetadata(metadata)
            if writeSidecar then
-              PhotoProcessor.writeMetadataToSidecar(photo, values)
+              PhotoProcessor.writeMetadataToSidecar(photo, metadata)
            end
            catalog:withPrivateWriteAccessDo(function(context) 
                  logger:trace("Saving Metadata", wb, photo.path)
-                 for k, v in pairs(values) do
+                 for k, v in pairs(metadata) do
                     photo:setPropertyForPlugin(_PLUGIN, k, v)
                  end
                  photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
@@ -250,8 +258,8 @@ function PhotoProcessor.cacheMetadata(photo)
       return
    end
 
-   local values = PhotoProcessor.readMetadataFromFile(photo)
-   PhotoProcessor.saveMetadataToCatalog(photo, values, true)
+   local metadata = PhotoProcessor.readMetadataFromFile(photo)
+   PhotoProcessor.saveMetadataToCatalog(photo, metadata, true)
 end
 
 function PhotoProcessor.clearMetadataFields(photo)
@@ -303,10 +311,7 @@ function PhotoProcessor.revertFile(photo)
       return
    end
 
-   assert(metadata.WhiteBalance)
-   assert(metadata.WB_RGGBLevelsAsShot)
-   assert(metadata.WB_RGGBLevels)
-   assert(metadata.ColorTempAsShot)
+   PhotoProcessor.expectAllMetadata(metadata)
 
    local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-WB_RGGBLevels=%s" "-ColorTempAsShot=%s" "%s"', metadata.WhiteBalance, metadata.WB_RGGBLevelsAsShot, metadata.WB_RGGBLevels, metadata.ColorTempAsShot, photo.path)
    local cmd = PhotoProcessor.exiftool .. " " .. args
