@@ -1,3 +1,3 @@
 require 'PhotoProcessor'
 
-PhotoProcessor.processPhotos('check')
+PhotoProcessor.processPhotos('load')

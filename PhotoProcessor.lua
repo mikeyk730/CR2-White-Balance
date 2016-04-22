@@ -164,25 +164,7 @@ function PhotoProcessor.getMetadataFromCatalog(photo)
    return metadata
 end
 
-function PhotoProcessor.runCommandSaveSidecar(photo)
-   logger:trace("Entering saveSidecar")
-   local metadata = PhotoProcessor.getMetadataFromCatalog(photo)
-   if metadata.fileStatus == 'loadedMetadata' or metadata.fileStatus == 'changedOnDisk' then
-      PhotoProcessor.writeMetadataToSidecar(photo, metadata)
-   else
-      logger:trace("Can't save sidecar", metadata.fileStatus)
-   end
-end
 
-function PhotoProcessor.runCommandLoadSidecar(photo)
-   logger:trace("Entering loadSidecar", sidecar)
-   local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
-   if status ~= nil then
-      logger:trace("Skipping file with metadata", photo.path)
-      return
-   end
-   PhotoProcessor.readMetadataFromSidecar(photo)
-end
 
 function PhotoProcessor.parseArgOutput(output)
    local metadataSet = PhotoProcessor.getMetadataSet()
@@ -250,21 +232,6 @@ function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
    --end)
 end
 
-function PhotoProcessor.runCommandCheck(photo)
-   logger:trace("Entering runCommandCheck", photo.path)
-
-   --Skip files whose metadata is already saved in the catalog
-   local catalog = LrApplication.activeCatalog()
-   local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
-   if status ~= nil then
-      logger:trace("Skipping file with metadata", photo.path)
-      return
-   end
-
-   logger:trace("Reading metadata", photo.path)
-   local metadata = PhotoProcessor.readMetadataFromFile(photo)
-   PhotoProcessor.saveMetadataToCatalog(photo, metadata, true)
-end
 
 function PhotoProcessor.clearMetadataFromCatalog(photo)
    local catalog = LrApplication.activeCatalog()
@@ -276,6 +243,47 @@ function PhotoProcessor.clearMetadataFromCatalog(photo)
          end
    end, { timeout=60 })      
 end
+
+
+
+function PhotoProcessor.runCommandSaveSidecar(photo)
+   logger:trace("Entering saveSidecar")
+   local metadata = PhotoProcessor.getMetadataFromCatalog(photo)
+   if metadata.fileStatus == 'loadedMetadata' or metadata.fileStatus == 'changedOnDisk' then
+      PhotoProcessor.writeMetadataToSidecar(photo, metadata)
+   else
+      logger:trace("Can't save sidecar", metadata.fileStatus)
+   end
+end
+
+function PhotoProcessor.runCommandLoadSidecar(photo)
+   logger:trace("Entering loadSidecar", sidecar)
+   local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
+   if status ~= nil then
+      logger:trace("Skipping file with metadata", photo.path)
+      return
+   end
+   PhotoProcessor.readMetadataFromSidecar(photo)
+end
+
+
+function PhotoProcessor.runCommandLoad(photo)
+   logger:trace("Entering runCommandLoad", photo.path)
+
+   --Skip files whose metadata is already loaded into the catalog
+   local catalog = LrApplication.activeCatalog()
+   local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
+   if status ~= nil then
+      logger:trace("Skipped loading", photo.path)
+      return
+   end
+
+   logger:trace("Reading metadata", photo.path)
+   local metadata = PhotoProcessor.readMetadataFromFile(photo)
+   PhotoProcessor.saveMetadataToCatalog(photo, metadata, true)
+end
+
+
 
 
 --Set new white balance metadata into the image.  The implementation uses 
@@ -373,8 +381,8 @@ function PhotoProcessor.processPhoto(photo, action)
                return
             end
 
-            if action == "check" then
-               PhotoProcessor.runCommandCheck(photo)
+            if action == "load" then
+               PhotoProcessor.runCommandLoad(photo)
             elseif action == "save" then
                PhotoProcessor.runCommandSave(photo, "Auto")
             elseif action == "revert" then
