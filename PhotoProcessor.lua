@@ -26,6 +26,10 @@ function split(inputstr, sep)
    return t
 end
 
+Prefs = {
+   writeSidecarOnLoad = true
+}
+
 PhotoProcessor = {}
 
 --todo:test with missing exe
@@ -135,8 +139,7 @@ function PhotoProcessor.readMetadataFromSidecar(photo)
      
    local content = LrFileUtils.readFile(sidecar)
    logger:trace("sidecar content",content)
-   local metadata = PhotoProcessor.parseArgOutput(content)
-   PhotoProcessor.saveMetadataToCatalog(photo, metadata, false)
+   return PhotoProcessor.parseArgOutput(content)
 end
 
 --Writes the supplied metadata to a sidecar file.
@@ -185,7 +188,6 @@ function PhotoProcessor.parseArgOutput(output)
       end
    end
    
-   PhotoProcessor.expectAllMetadata(t)
    return t
 end
 
@@ -245,45 +247,54 @@ function PhotoProcessor.clearMetadataFromCatalog(photo)
 end
 
 
-
+--Save metadata from the catalog into a sidecar file
 function PhotoProcessor.runCommandSaveSidecar(photo)
-   logger:trace("Entering saveSidecar")
-   local metadata = PhotoProcessor.getMetadataFromCatalog(photo)
-   if metadata.fileStatus == 'loadedMetadata' or metadata.fileStatus == 'changedOnDisk' then
-      PhotoProcessor.writeMetadataToSidecar(photo, metadata)
-   else
-      logger:trace("Can't save sidecar", metadata.fileStatus)
-   end
-end
+   logger:trace("Entering runCommandSaveSidecar", photo.path)
 
-function PhotoProcessor.runCommandLoadSidecar(photo)
-   logger:trace("Entering loadSidecar", sidecar)
-   local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
-   if status ~= nil then
-      logger:trace("Skipping file with metadata", photo.path)
+   --Don't write sidecar if there's no metadata in the catalog
+   local metadata = PhotoProcessor.getMetadataFromCatalog(photo)
+   if metadata.fileStatus ~= 'loadedMetadata' and metadata.fileStatus ~= 'changedOnDisk' then
+      logger:trace("Can't save sidecar", metadata.fileStatus, photo.path)
       return
    end
-   PhotoProcessor.readMetadataFromSidecar(photo)
+
+   logger:trace("Saving metadata to sidecar", photo.path)
+   PhotoProcessor.writeMetadataToSidecar(photo, metadata)
 end
 
 
+--Load metadata from the sidecar into the catalog
+function PhotoProcessor.runCommandLoadSidecar(photo)
+   logger:trace("Entering runCommandLoadSidecar", photo.path)
+
+   --Skip files whose metadata is already in the catalog
+   local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
+   if status ~= nil then
+      logger:trace("Skipped loading sidecar", status, photo.path)
+      return
+   end
+
+   logger:trace("Loading metadata from sidecar", photo.path)
+   local metadata = PhotoProcessor.readMetadataFromSidecar(photo)
+   PhotoProcessor.saveMetadataToCatalog(photo, metadata, false)
+end
+
+
+--Load metadata from the file into the catalog
 function PhotoProcessor.runCommandLoad(photo)
    logger:trace("Entering runCommandLoad", photo.path)
 
-   --Skip files whose metadata is already loaded into the catalog
-   local catalog = LrApplication.activeCatalog()
+   --Skip files whose metadata is already in the catalog
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
    if status ~= nil then
-      logger:trace("Skipped loading", photo.path)
+      logger:trace("Skipped loading", status, photo.path)
       return
    end
 
-   logger:trace("Reading metadata", photo.path)
+   logger:trace("Loading metadata from file", photo.path)
    local metadata = PhotoProcessor.readMetadataFromFile(photo)
-   PhotoProcessor.saveMetadataToCatalog(photo, metadata, true)
+   PhotoProcessor.saveMetadataToCatalog(photo, metadata, Prefs.writeSidecarOnLoad)
 end
-
-
 
 
 --Set new white balance metadata into the image.  The implementation uses 
@@ -298,7 +309,7 @@ function PhotoProcessor.runCommandSave(photo, newWb)
       return
    end
 
-   logger:trace("Saving file", photo.path)
+   logger:trace("Saving metadata to file", photo.path)
    PhotoProcessor.expectValidWbSelection(newWb)
    PhotoProcessor.expectAllMetadata(metadata)
    local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-WB_RGGBLevels<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
