@@ -90,6 +90,29 @@ function PhotoProcessor.runCmd(cmd)
    return s
 end
 
+function PhotoProcessor.parseArgOutput(output)
+   local metadataSet = PhotoProcessor.getMetadataSet()
+   local t = {}
+
+   local lines = split(output, '\n')
+   for i, line in pairs(lines) do
+      k, v = string.match(line, '-([%w_]+)=(.+)')
+      if k and v then
+         k = LrStringUtils.trimWhitespace(k)
+         v = LrStringUtils.trimWhitespace(v)
+         --logger:trace("parseArgOutput",k,v)
+         if metadataSet[k] then
+            t[k]=v
+         else
+            logger:warn("dropping key", k)
+         end
+      end
+   end
+   
+   return t
+end
+
+
 function PhotoProcessor.promptForSnapshotName()
    local r = "Untitled"
    LrFunctionContext.callWithContext("promptForSnapshotName", function(context)
@@ -168,29 +191,6 @@ function PhotoProcessor.getMetadataFromCatalog(photo)
 end
 
 
-
-function PhotoProcessor.parseArgOutput(output)
-   local metadataSet = PhotoProcessor.getMetadataSet()
-   local t = {}
-
-   local lines = split(output, '\n')
-   for i, line in pairs(lines) do
-      k, v = string.match(line, '-([%w_]+)=(.+)')
-      if k and v then
-         k = LrStringUtils.trimWhitespace(k)
-         v = LrStringUtils.trimWhitespace(v)
-         --logger:trace("parseArgOutput",k,v)
-         if metadataSet[k] then
-            t[k]=v
-         else
-            logger:warn("dropping key", k)
-         end
-      end
-   end
-   
-   return t
-end
-
 --Reads white balance metadata from the provided file.  Returns a table of the values
 function PhotoProcessor.readMetadataFromFile(photo)
    logger:trace("Entering readMetadataFromFile", photo.path)
@@ -200,6 +200,7 @@ function PhotoProcessor.readMetadataFromFile(photo)
    local output = PhotoProcessor.runCmd(cmd)
    return PhotoProcessor.parseArgOutput(output)
 end
+
 
 --Saves the provided white balance metadata into the catalog 
 function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
@@ -232,6 +233,48 @@ function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
            end, { timeout=60 })
         end
    --end)
+end
+
+
+function PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
+   PhotoProcessor.expectValidWbSelection(newWb)
+   PhotoProcessor.expectAllMetadata(metadata)
+   local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-WB_RGGBLevels<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
+   local cmd = PhotoProcessor.exiftool .. " " .. args,
+
+   local catalog = LrApplication.activeCatalog()
+   catalog:withPrivateWriteAccessDo(function(context) 
+         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'changedOnDisk')
+   end, { timeout=60 })
+
+   local output = PhotoProcessor.runCmd(cmd)
+   if not string.find(output, "1 image files updated") then
+      logger:error("Save failed")
+      logger:trace(output)
+      LrErrors.throwUserError("Save failed")
+   end
+end
+
+
+function PhotoProcessor.restoreFileMetadata(photo, metadata)
+   PhotoProcessor.expectAllMetadata(metadata)
+   local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-WB_RGGBLevels=%s" "-ColorTempAsShot=%s" "%s"',
+                              metadata.WhiteBalance, metadata.WB_RGGBLevelsAsShot, 
+                              metadata.WB_RGGBLevels, metadata.ColorTempAsShot, 
+                              photo.path)
+   local cmd = PhotoProcessor.exiftool .. " " .. args
+
+   local output = PhotoProcessor.runCmd(cmd)
+   if not string.find(output, "1 image files updated") then
+      logger:error("Revert failed")
+      logger:trace(output)
+      LrErrors.throwUserError("Revert failed")
+   end
+
+   local catalog = LrApplication.activeCatalog()
+   catalog:withPrivateWriteAccessDo(function(context) 
+         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
+   end, { timeout=60 })
 end
 
 
@@ -313,25 +356,6 @@ function PhotoProcessor.runCommandSave(photo, newWb)
    PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
 end
 
-function PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
-   PhotoProcessor.expectValidWbSelection(newWb)
-   PhotoProcessor.expectAllMetadata(metadata)
-   local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-WB_RGGBLevels<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
-   local cmd = PhotoProcessor.exiftool .. " " .. args,
-
-   local catalog = LrApplication.activeCatalog()
-   catalog:withPrivateWriteAccessDo(function(context) 
-         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'changedOnDisk')
-   end, { timeout=60 })
-
-   local output = PhotoProcessor.runCmd(cmd)
-   if not string.find(output, "1 image files updated") then
-      logger:error("Save failed")
-      logger:trace(output)
-      LrErrors.throwUserError("Save failed")
-   end
-end
-
 
 --Restores the original white balance to the image.  The implementation uses 
 --exiftool to overwrite image metadata with metadata stored in the catalog.
@@ -348,27 +372,6 @@ function PhotoProcessor.runCommandRevert(photo)
 
    logger:trace("Reverting file", photo.path)
    PhotoProcessor.restoreFileMetadata(photo, metadata)
-end
-
-function PhotoProcessor.restoreFileMetadata(photo, metadata)
-   PhotoProcessor.expectAllMetadata(metadata)
-   local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-WB_RGGBLevels=%s" "-ColorTempAsShot=%s" "%s"',
-                              metadata.WhiteBalance, metadata.WB_RGGBLevelsAsShot, 
-                              metadata.WB_RGGBLevels, metadata.ColorTempAsShot, 
-                              photo.path)
-   local cmd = PhotoProcessor.exiftool .. " " .. args
-
-   local output = PhotoProcessor.runCmd(cmd)
-   if not string.find(output, "1 image files updated") then
-      logger:error("Revert failed")
-      logger:trace(output)
-      LrErrors.throwUserError("Revert failed")
-   end
-
-   local catalog = LrApplication.activeCatalog()
-   catalog:withPrivateWriteAccessDo(function(context) 
-         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
-   end, { timeout=60 })
 end
 
 
