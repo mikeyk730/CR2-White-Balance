@@ -46,6 +46,7 @@ PhotoProcessor.whiteBalanceOptions = {
    "Measured", --todo:What is this?
 }
 
+
 function PhotoProcessor.getMetadataFields()
    --todo:get programatically
    return {
@@ -56,6 +57,7 @@ function PhotoProcessor.getMetadataFields()
       'ColorTempAsShot', 
    }
 end
+
 
 function PhotoProcessor.getMetadataSet()
    --todo:get programatically
@@ -68,6 +70,7 @@ function PhotoProcessor.getMetadataSet()
    }
 end
 
+
 function PhotoProcessor.expectAllMetadata(metadata)
    assert(metadata.WhiteBalance)
    assert(metadata.WB_RGGBLevelsAsShot)
@@ -75,9 +78,11 @@ function PhotoProcessor.expectAllMetadata(metadata)
    assert(metadata.ColorTempAsShot)
 end
 
+
 function PhotoProcessor.expectValidWbSelection(wb)
    --todo:verify that wb is in whiteBalanceOptions
 end
+
 
 --Shell execute the provided command.  Return the output of the command
 function PhotoProcessor.runCmd(cmd)
@@ -89,6 +94,7 @@ function PhotoProcessor.runCmd(cmd)
    f:close()
    return s
 end
+
 
 function PhotoProcessor.parseArgOutput(output)
    local metadataSet = PhotoProcessor.getMetadataSet()
@@ -160,12 +166,14 @@ end
 
 --Writes the supplied metadata to a sidecar file.
 function PhotoProcessor.saveMetadataToSidecar(photo, metadata)
-   metadata.fileStatus = nil
+   PhotoProcessor.expectAllMetadata(metadata)
+
    local sidecar = PhotoProcessor.getSidecarFilename(photo)
    logger:trace("Writing metadata to sidecar", sidecar)
    local f = assert(io.open(sidecar, "w"))
+
+   metadata.fileStatus = nil
    for k, v in pairs(metadata) do
-      --logger:trace(k,v)
       f:write("-"..k.."="..v.."\n")
    end
    f:close()
@@ -185,14 +193,15 @@ function PhotoProcessor.loadMetadataFromCatalog(photo)
 end
 
 
---Reads white balance metadata from the provided file.  Returns a table of the values
-function PhotoProcessor.readMetadataFromFile(photo)
-   logger:trace("Entering readMetadataFromFile", photo.path)
-
-   local args = '-args -WhiteBalance -WB_RGGBLevelsAsShot -WB_RGGBLevels -ColorTempAsShot "%s"'
-   local cmd = string.format(PhotoProcessor.exiftool .. " " .. args, photo.path)
-   local output = PhotoProcessor.runCmd(cmd)
-   return PhotoProcessor.parseArgOutput(output)
+function PhotoProcessor.clearMetadataFromCatalog(photo)
+   local catalog = LrApplication.activeCatalog()
+   catalog:withPrivateWriteAccessDo(function(context) 
+         logger:trace("Clearing metadata", photo.path)
+         local keys = PhotoProcessor.getMetadataFields()
+         for i, k in ipairs(keys) do            
+            photo:setPropertyForPlugin(_PLUGIN, k, nil)
+         end
+   end, { timeout=60 })      
 end
 
 
@@ -208,7 +217,7 @@ function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
         
         if wb == nil then
            logger:error("Failed to read white balance", photo.path)
-        elseif wb == "Auto" then
+        elseif wb == "Auto" then --todo: stop treating auto special
            catalog:withPrivateWriteAccessDo(function(context) 
                  logger:trace("Saving Metadata Auto", photo.path)
                  photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'shotInAuto')
@@ -227,6 +236,17 @@ function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
            end, { timeout=60 })
         end
    --end)
+end
+
+
+--Reads white balance metadata from the provided file.  Returns a table of the values
+function PhotoProcessor.readMetadataFromFile(photo)
+   logger:trace("Entering readMetadataFromFile", photo.path)
+
+   local args = '-args -WhiteBalance -WB_RGGBLevelsAsShot -WB_RGGBLevels -ColorTempAsShot "%s"'
+   local cmd = string.format(PhotoProcessor.exiftool .. " " .. args, photo.path)
+   local output = PhotoProcessor.runCmd(cmd)
+   return PhotoProcessor.parseArgOutput(output)
 end
 
 
@@ -271,17 +291,6 @@ function PhotoProcessor.restoreFileMetadata(photo, metadata)
    end, { timeout=60 })
 end
 
-
-function PhotoProcessor.clearMetadataFromCatalog(photo)
-   local catalog = LrApplication.activeCatalog()
-   catalog:withPrivateWriteAccessDo(function(context) 
-         logger:trace("Clearing metadata", photo.path)
-         local keys = PhotoProcessor.getMetadataFields()
-         for i, k in ipairs(keys) do            
-            photo:setPropertyForPlugin(_PLUGIN, k, nil)
-         end
-   end, { timeout=60 })      
-end
 
 
 --Create a develop snapshot fro the supplied photo.  If no name is supplied
