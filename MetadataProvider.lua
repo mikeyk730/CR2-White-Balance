@@ -35,12 +35,6 @@ return {
          version = 1
       },
       {
-         id = 'WhiteBalanceAdj',
-         title = LOC '$$$/Metadata/Fields/WhiteBalanceAdj=WhiteBalanceAdj',
-         dataType = 'string',
-         readOnly = true
-      },
-      {
          id = 'WB_RGGBLevelsAsShot',
          title = LOC '$$$/Metadata/Fields/WB_RGGBLevelsAsShot=WB_RGGBLevelsAsShot',
          dataType = 'string',
@@ -53,20 +47,8 @@ return {
          readOnly = true
       },
       {
-         id = 'WBAdjRGGBLevels',
-         title = LOC '$$$/Metadata/Fields/WBAdjRGGBLevels=WBAdjRGGBLevels',
-         dataType = 'string',
-         readOnly = true
-      },
-      {
          id = 'ColorTempAsShot',
          title = LOC '$$$/Metadata/Fields/ColorTempAsShot=ColorTempAsShot',
-         dataType = 'string',
-         readOnly = true
-      },
-      {
-         id = 'WBAdjColorTemp',
-         title = LOC '$$$/Metadata/Fields/WBAdjColorTemp=WBAdjColorTemp',
          dataType = 'string',
          readOnly = true
       },

@@ -13,6 +13,28 @@ local LrProgressScope = import 'LrProgressScope'
 --LrErrors.throwUserError( text )
 --enabledWhen photosSelected:
 
+--WB_RGGBLevelsCloudy=2162 1024 1024 1419
+--ColorTempCloudy=6000
+--WB_RGGBLevelsDaylight=2013 1024 1024 1544
+--ColorTempDaylight=5200
+--WB_RGGBLevelsTungsten=1444 1024 1024 2335
+--ColorTempTungsten=3200
+--WB_RGGBLevelsShade=2315 1024 1024 1311
+--ColorTempShade=6982
+
+--WB_RGGBLevelsFluorescent=1817 1024 1024 2180
+--ColorTempFluorescent=3807
+--WB_RGGBLevelsFlash=2226 1024 1024 1407
+--ColorTempFlash=6228
+
+--WB_RGGBLevelsAsShot=
+--ColorTempAsShot=
+--WB_RGGBLevelsAuto=
+--ColorTempAuto=
+--WB_RGGBLevelsMeasured=1095 1029 1017 2982
+--ColorTempMeasured=2439
+
+
 local logger = LrLogger('CorrectWhiteBalance')
 logger:enable("logfile")
 
@@ -25,12 +47,9 @@ function PhotoProcessor.getMetadataFields()
    return {
       'fileStatus', 
       'WhiteBalance', 
-      'WhiteBalanceAdj', 
       'WB_RGGBLevelsAsShot', 
       'WB_RGGBLevels', 
-      'WBAdjRGGBLevels', 
       'ColorTempAsShot', 
-      'WBAdjColorTemp',
    }
 end
 
@@ -40,12 +59,9 @@ function PhotoProcessor.getMetadataSet()
    return {
       fileStatus = true,
       WhiteBalance = true,
-      WhiteBalanceAdj = true,
       WB_RGGBLevelsAsShot = true,
       WB_RGGBLevels = true,
-      WBAdjRGGBLevels = true,
       ColorTempAsShot = true,
-      WBAdjColorTem = true,
    }
 end
 
@@ -197,7 +213,7 @@ end
 function PhotoProcessor.readMetadataFromFile(photo)
    logger:trace("Entering readMetadataFromFile", photo.path)
 
-   local args = '-args -WhiteBalance -CanonVRD:WhiteBalanceAdj -WB_RGGBLevelsAsShot -WB_RGGBLevels -WBAdjRGGBLevels -ColorTempAsShot -WBAdjColorTemp "%s"'
+   local args = '-args -WhiteBalance -WB_RGGBLevelsAsShot -WB_RGGBLevels -ColorTempAsShot "%s"'
    local cmd = string.format(PhotoProcessor.exiftool .. " " .. args, photo.path)
    local output = PhotoProcessor.runCmd(cmd)
    return PhotoProcessor.parseArgOutput(output)
@@ -273,7 +289,7 @@ function PhotoProcessor.saveFile(photo)
       return
    end
 
-   local args = '-tagsfromfile "%s" "-WhiteBalance=Auto" "-CanonVRD:WhiteBalanceAdj=Auto" "-WB_RGGBLevelsAsShot<WB_RGGBLevelsAuto" "-WB_RGGBLevels<WB_RGGBLevelsAuto" "-WBAdjRGGBLevels<WB_RGGBLevelsAuto" "-ColorTempAsShot<ColorTempAuto" "-WBAdjColorTemp<ColorTemperature" "%s"'
+   local args = '-tagsfromfile "%s" "-WhiteBalance=Auto" "-WB_RGGBLevelsAsShot<WB_RGGBLevelsAuto" "-WB_RGGBLevels<WB_RGGBLevelsAuto" "-ColorTempAsShot<ColorTempAuto" "%s"'
    local cmd = string.format(PhotoProcessor.exiftool .. " " .. args, photo.path, photo.path)
 
    local catalog = LrApplication.activeCatalog()
@@ -315,19 +331,6 @@ function PhotoProcessor.revertFile(photo)
    v = photo:getPropertyForPlugin(_PLUGIN, 'ColorTempAsShot', nil)
    if v == nil then error('required field not set') end
    args = args .. '"-ColorTempAsShot=' .. v .. '" '
-
-   v = photo:getPropertyForPlugin(_PLUGIN, 'WhiteBalanceAdj', nil)
-   if v ~= nil then
-      args = args .. '"-CanonVRD:WhiteBalanceAdj=' .. v .. '" '
-   end
-   v = photo:getPropertyForPlugin(_PLUGIN, 'WBAdjRGGBLevels', nil)
-   if v ~= nil then
-      args = args .. '"-WBAdjRGGBLevels=' .. v .. '" '
-   end
-   v = photo:getPropertyForPlugin(_PLUGIN, 'WBAdjColorTemp', nil)
-   if v ~= nil then
-      args = args .. '"-WBAdjColorTemp=' .. v .. '" '
-   end
 
    local cmd = string.format(PhotoProcessor.exiftool .. ' %s "%s"', args, photo.path)
 

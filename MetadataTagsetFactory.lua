@@ -11,8 +11,5 @@ return {
       'com.mkaminski.metadata.WB_RGGBLevels',
       'com.mkaminski.metadata.WB_RGGBLevelsAsShot',
       'com.mkaminski.metadata.ColorTempAsShot',
-      'com.mkaminski.metadata.WhiteBalanceAdj',
-      'com.mkaminski.metadata.WBAdjRGGBLevels',
-      'com.mkaminski.metadata.WBAdjColorTemp',
    }
 }
