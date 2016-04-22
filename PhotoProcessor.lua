@@ -217,11 +217,11 @@ function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
         
         if wb == nil then
            logger:error("Failed to read white balance", photo.path)
-        elseif wb == "Auto" then --todo: stop treating auto special
-           catalog:withPrivateWriteAccessDo(function(context) 
-                 logger:trace("Saving Metadata Auto", photo.path)
-                 photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'shotInAuto')
-           end, { timeout=60 })      
+        --elseif wb == "Auto" then --todo: stop treating auto special
+        --   catalog:withPrivateWriteAccessDo(function(context) 
+        --         logger:trace("Saving Metadata Auto", photo.path)
+        --         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'shotInAuto')
+        --   end, { timeout=60 })      
         else
            PhotoProcessor.expectAllMetadata(metadata)
            if writeSidecar then
@@ -254,7 +254,7 @@ function PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
    PhotoProcessor.expectValidWbSelection(newWb)
    PhotoProcessor.expectAllMetadata(metadata)
    local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-WB_RGGBLevels<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
-   local cmd = PhotoProcessor.exiftool .. " " .. args,
+   local cmd = PhotoProcessor.exiftool .. " " .. args
 
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
@@ -475,8 +475,8 @@ function PhotoProcessor.processPhotos(action)
          progressScope:setCancelable(true)
 
          for i,v in ipairs(photos) do
-            logger:trace("Canceled task", action, i)
             if progressScope:isCanceled() then 
+               logger:trace("Canceled task", action, i)
                break
             end
             progressScope:setPortionComplete(i, totalPhotos)
