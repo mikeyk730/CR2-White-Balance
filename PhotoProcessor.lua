@@ -47,7 +47,7 @@ PhotoProcessor.canonWbOptions = {
 }
 
 PhotoProcessor.dialogWbOptions = {
-   { value = "AsShot", title = "Revert to As Shot" },
+   { value = "AsShot", title = "Revert to Shot Settings" },
    { value = "Auto", title = "Auto" },
    { value = "Daylight", title = "Daylight" },
    { value = "Cloudy", title = "Cloudy" },
@@ -170,7 +170,7 @@ function PhotoProcessor.promptForSnapshotName()
    local r = "Untitled"
    LrFunctionContext.callWithContext("promptForSnapshotName", function(context)
       local props = LrBinding.makePropertyTable(context)
-      props.name = "Untitled"
+      props.name = r
 
       local f = LrView.osFactory()
       local c = f:row {
@@ -184,8 +184,12 @@ function PhotoProcessor.promptForSnapshotName()
             title = "Enter Name For Snapshot",
             contents = c
       })
-      --todo:check result
-      r = props.name
+      
+      if result == "ok" then
+         r = props.name
+      else
+         r = nil
+      end
    end)
    return r
 end
@@ -331,12 +335,10 @@ function PhotoProcessor.restoreFileMetadata(photo, metadata)
 end
 
 
---todo: prompt once for set, not once per photo
-function PhotoProcessor.runCommandChange(photo)
+function PhotoProcessor.runCommandChange(photo, newWb)
    logger:trace("Entering runCommandChange", photo.path)
    
-   --todo: pass in override
-   local newWb = PhotoProcessor.promptForWhiteBalance()
+   --todo: check earlier
    if newWb == nil then
       logger:trace("Change canceled", photo.path)
       return
@@ -356,9 +358,11 @@ end
 --todo:move to standalone plugin
 function PhotoProcessor.runCommandCreateSnapshot(photo, name)
    logger:trace("Entering runCommandCreateSnapshot", photo.path)
-
+   
+   --todo:
    if name == nil then
-      name = PhotoProcessor.promptForSnapshotName()
+      logger:trace("Snapshot canceled", photo.path)
+      return
    end
 
    logger:trace("Creating snapshot", name, photo.path)
@@ -472,7 +476,20 @@ function PhotoProcessor.runCommandClear(photo)
 end
 
 
-function PhotoProcessor.processPhoto(photo, action)
+function PhotoProcessor.promptUser(action)
+   local props = {}
+
+   if action == "change" then
+      props.newWb = PhotoProcessor.promptForWhiteBalance()
+   elseif action == "createSnapshot" then
+      props.name = PhotoProcessor.promptForSnapshotName()
+   end
+
+   return props
+end
+
+
+function PhotoProcessor.processPhoto(photo, action, props)
    --LrTasks.startAsyncTask(function(context)
          local available = photo:checkPhotoAvailability()
          if available then         
@@ -486,7 +503,7 @@ function PhotoProcessor.processPhoto(photo, action)
             end
 
             if action == "change" then
-               PhotoProcessor.runCommandChange(photo)
+               PhotoProcessor.runCommandChange(photo, props.newWb)
             elseif action == "load" then
                PhotoProcessor.runCommandLoad(photo)
             elseif action == "save" then
@@ -500,7 +517,7 @@ function PhotoProcessor.processPhoto(photo, action)
             elseif action == "saveSidecar" then
                PhotoProcessor.runCommandSaveSidecar(photo)
             elseif action == "createSnapshot" then
-               PhotoProcessor.runCommandCreateSnapshot(photo)
+               PhotoProcessor.runCommandCreateSnapshot(photo, props.name)
             else
                logger:error("Unknown action: " .. action)
             end
@@ -537,6 +554,8 @@ function PhotoProcessor.processPhotos(action)
          --progressScope:attachToFunctionContext(context)
          progressScope:setCancelable(true)
 
+         local props = PhotoProcessor.promptUser(action)
+
          for i,v in ipairs(photos) do
             if progressScope:isCanceled() then 
                logger:trace("Canceled task", action, i)
@@ -544,7 +563,7 @@ function PhotoProcessor.processPhotos(action)
             end
             progressScope:setPortionComplete(i, totalPhotos)
             progressScope:setCaption(action.." "..i.." of "..totalPhotos)
-            PhotoProcessor.processPhoto(v, action)
+            PhotoProcessor.processPhoto(v, action, props)
          end
 
          logger:trace("Completed task", action, totalPhotos)
