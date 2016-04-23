@@ -12,22 +12,27 @@ return {
 
    LrLibraryMenuItems = {
       {
-         title = "&Load Metadata",
+         title = "&Change Canon White Balance",
+         file = "MenuItemChangeWhiteBalance.lua",
+         enabledWhen = "photosSelected",
+      },
+      {
+         title = "&Load Metadata From File",
          file = "MenuItemCheckWhiteBalance.lua",
          enabledWhen = "photosSelected",
       },
       {
-         title = "Clear Metadata",
+         title = "Clear Unsaved Metadata",
          file = "MenuItemClearWhiteBalance.lua",
          enabledWhen = "photosSelected",
       },
       {
-         title = "&Save White Balance",
+         title = "&Save Metadata to File",
          file = "MenuItemSaveWhiteBalance.lua",
          enabledWhen = "photosSelected",
       },
       {
-         title = "&Revert White Balance",
+         title = "&Revert Saved Metadata",
          file = "MenuItemRevertWhiteBalance.lua",
          enabledWhen = "photosSelected",
       },

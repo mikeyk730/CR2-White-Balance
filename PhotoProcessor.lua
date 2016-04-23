@@ -35,7 +35,7 @@ PhotoProcessor = {}
 --todo:test with missing exe
 PhotoProcessor.exiftool = 'exiftool.exe'
 
-PhotoProcessor.whiteBalanceOptions = {
+PhotoProcessor.canonWbOptions = {
    "Auto",
    "Daylight",
    "Cloudy",
@@ -44,6 +44,18 @@ PhotoProcessor.whiteBalanceOptions = {
    "Fluorescent",
    "Flash",
    "Measured", --todo:What is this?
+}
+
+PhotoProcessor.dialogWbOptions = {
+   { value = "AsShot", title = "Revert to As Shot" },
+   { value = "Auto", title = "Auto" },
+   { value = "Daylight", title = "Daylight" },
+   { value = "Cloudy", title = "Cloudy" },
+   { value = "Shade", title = "Shade" },
+   { value = "Tungsten", title = "Tungsten" },
+   { value = "Fluorescent", title = "Fluorescent" },
+   { value = "Flash", title = "Flash" },
+   { value = "Measured", title = "Measured" }, --todo:What is this?
 }
 
 
@@ -82,7 +94,7 @@ end
 
 
 function PhotoProcessor.expectValidWbSelection(wb)
-   --todo:verify that wb is in whiteBalanceOptions
+   --todo:verify that wb is in canonWbOptions
 end
 
 
@@ -121,6 +133,39 @@ function PhotoProcessor.parseArgOutput(output)
 end
 
 
+function PhotoProcessor.promptForWhiteBalance(selectedOption)
+   if selectedOption == nil then
+      selectedOption = 'Auto'
+   end
+
+   LrFunctionContext.callWithContext("promptForWhiteBalance", function(context)
+      local props = LrBinding.makePropertyTable(context)
+      props.option = selectedOption
+
+      local f = LrView.osFactory()
+      local c = f:row {
+         bind_to_object = props,
+         f:popup_menu {
+            value = LrView.bind("option"),
+            items = PhotoProcessor.dialogWbOptions
+         },
+      }
+
+      local result = LrDialogs.presentModalDialog({
+            title = "Select New White Balance",
+            contents = c
+      })
+
+      if result == "ok" then
+         selectedOption = props.option
+      else 
+         selectedOption = nil
+      end
+   end)
+
+   return selectedOption
+end
+
 function PhotoProcessor.promptForSnapshotName()
    local r = "Untitled"
    LrFunctionContext.callWithContext("promptForSnapshotName", function(context)
@@ -136,10 +181,10 @@ function PhotoProcessor.promptForSnapshotName()
       }
 
       local result = LrDialogs.presentModalDialog({
-            title = "Custom",
+            title = "Enter Name For Snapshot",
             contents = c
       })
-
+      --todo:check result
       r = props.name
    end)
    return r
@@ -286,9 +331,29 @@ function PhotoProcessor.restoreFileMetadata(photo, metadata)
 end
 
 
+--todo: prompt once for set, not once per photo
+function PhotoProcessor.runCommandChange(photo)
+   logger:trace("Entering runCommandChange", photo.path)
+   
+   --todo: pass in override
+   local newWb = PhotoProcessor.promptForWhiteBalance()
+   if newWb == nil then
+      logger:trace("Change canceled", photo.path)
+      return
+   end
+
+   logger:trace("Changing white balance", newWb, photo.path)
+   PhotoProcessor.runCommandLoad(photo)
+   if newWb == "AsShot" then
+      PhotoProcessor.runCommandRevert(photo)
+   else
+      PhotoProcessor.runCommandSave(photo, newWb)
+   end
+end
 
 --Create a develop snapshot fro the supplied photo.  If no name is supplied
 --the user will be prompted with a dialog
+--todo:move to standalone plugin
 function PhotoProcessor.runCommandCreateSnapshot(photo, name)
    logger:trace("Entering runCommandCreateSnapshot", photo.path)
 
@@ -359,9 +424,11 @@ end
 function PhotoProcessor.runCommandSave(photo, newWb)
    logger:trace("Entering runCommandSave", photo.path)
 
+   --todo: revisit, take into account override
+
    --Don't write the file unless the original metadata is stored in the catalog
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
-   if metadata.fileStatus ~= 'loadedMetadata' then
+   if metadata.fileStatus ~= 'loadedMetadata' and metadata.fileStatus ~= 'changedOnDisk' then
       logger:trace("Can't save file", metadata.fileStatus, photo.path)
       return
    end
@@ -418,7 +485,9 @@ function PhotoProcessor.processPhoto(photo, action)
                return
             end
 
-            if action == "load" then
+            if action == "change" then
+               PhotoProcessor.runCommandChange(photo)
+            elseif action == "load" then
                PhotoProcessor.runCommandLoad(photo)
             elseif action == "save" then
                PhotoProcessor.runCommandSave(photo, "Auto")
