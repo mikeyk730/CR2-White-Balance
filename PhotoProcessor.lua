@@ -9,7 +9,9 @@ local LrProgressScope = import 'LrProgressScope'
 local LrStringUtils = import 'LrStringUtils'
 local LrTasks = import 'LrTasks'
 local LrView = import 'LrView'
+
 --todo:can i write backup info to CR2 instead of sidecars? could reuse adj fields
+--todo: make sure catalog metadata never gets overwritten
 
 local logger = LrLogger('CorrectWhiteBalance')
 logger:enable("logfile")
@@ -305,7 +307,7 @@ function PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
 
    local output = PhotoProcessor.runCmd(cmd)
    if not string.find(output, "1 image files updated") then
-      logger:error("Save failed")
+      logger:error("Save failed.  File may be locked by another process")
       logger:trace(output)
       LrErrors.throwUserError("Save failed")
    end
@@ -324,7 +326,7 @@ function PhotoProcessor.restoreFileMetadata(photo, metadata)
    if not string.find(output, "1 image files updated") then
       logger:error("Revert failed")
       logger:trace(output)
-      LrErrors.throwUserError("Revert failed")
+      LrErrors.throwUserError("Revert failed.  File may be locked by another process")
    end
 
    local catalog = LrApplication.activeCatalog()
@@ -550,7 +552,7 @@ function PhotoProcessor.processPhotos(action)
    --todo:rework so each photo can be a task
    LrTasks.startAsyncTask(function(context)
          local progressScope = LrProgressScope {title=action.." "..totalPhotos.." photos"}
-         --todo:doens't work
+         --todo:doens't work, progress hangs on error
          --progressScope:attachToFunctionContext(context)
          progressScope:setCancelable(true)
 
