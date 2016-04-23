@@ -1,14 +1,10 @@
 local valuesFileStatus = {
    {
-      value = 'shotInAuto',
-      title = LOC '$$$/Metadata/Fields/FileStatus/ShotInAuto=Shot in Auto',
-   },
-   {
       value = 'loadedMetadata',
       title = LOC '$$$/Metadata/Fields/FileStatus/MetadataLoaded=Metadata Loaded',
    },
    {
-      value = 'changedOnDisk',
+      value = 'changedOnDisk', --todo: may not need anymore
       title = LOC '$$$/Metadata/Fields/FileStatus/UpdatedOnDisk=Updated on Disk',
    }
 }

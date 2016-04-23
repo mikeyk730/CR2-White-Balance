@@ -54,7 +54,8 @@ function PhotoProcessor.getMetadataFields()
       'WhiteBalance', 
       'WB_RGGBLevels', 
       'WB_RGGBLevelsAsShot', 
-      'ColorTempAsShot', 
+      'ColorTempAsShot',
+      'WhiteBalanceOverride',
    }
 end
 
@@ -67,11 +68,12 @@ function PhotoProcessor.getMetadataSet()
       WB_RGGBLevels = true,
       WB_RGGBLevelsAsShot = true,
       ColorTempAsShot = true,
+      WhiteBalanceOverride = true,
    }
 end
 
 
-function PhotoProcessor.expectAllMetadata(metadata)
+function PhotoProcessor.expectCachedMetadata(metadata)
    assert(metadata.WhiteBalance)
    assert(metadata.WB_RGGBLevelsAsShot)
    assert(metadata.WB_RGGBLevels)
@@ -166,13 +168,14 @@ end
 
 --Writes the supplied metadata to a sidecar file.
 function PhotoProcessor.saveMetadataToSidecar(photo, metadata)
-   PhotoProcessor.expectAllMetadata(metadata)
+   PhotoProcessor.expectCachedMetadata(metadata)
 
    local sidecar = PhotoProcessor.getSidecarFilename(photo)
    logger:trace("Writing metadata to sidecar", sidecar)
    local f = assert(io.open(sidecar, "w"))
 
    metadata.fileStatus = nil
+   metadata.WhiteBalanceOverride = nil
    for k, v in pairs(metadata) do
       f:write("-"..k.."="..v.."\n")
    end
@@ -208,7 +211,7 @@ end
 --Saves the provided white balance metadata into the catalog 
 function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
    --LrTasks.startAsyncTask(function(context)
-         PhotoProcessor.expectAllMetadata(metadata)
+         PhotoProcessor.expectCachedMetadata(metadata)
          
          if writeSidecar then
             PhotoProcessor.saveMetadataToSidecar(photo, metadata)
@@ -218,6 +221,7 @@ function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
          catalog:withPrivateWriteAccessDo(function(context) 
                logger:trace("Have write access to catalog", photo.path)
                metadata.fileStatus = nil
+               metadata.WhiteBalanceOverride = nil
                for k, v in pairs(metadata) do
                   photo:setPropertyForPlugin(_PLUGIN, k, v)
                end
@@ -240,13 +244,14 @@ end
 
 function PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
    PhotoProcessor.expectValidWbSelection(newWb)
-   PhotoProcessor.expectAllMetadata(metadata)
+   PhotoProcessor.expectCachedMetadata(metadata)
    local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-WB_RGGBLevels<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
    local cmd = PhotoProcessor.exiftool .. " " .. args
 
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
          photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'changedOnDisk')
+         photo:setPropertyForPlugin(_PLUGIN, 'WhiteBalanceOverride', newWb)
    end, { timeout=60 })
 
    local output = PhotoProcessor.runCmd(cmd)
@@ -259,7 +264,7 @@ end
 
 
 function PhotoProcessor.restoreFileMetadata(photo, metadata)
-   PhotoProcessor.expectAllMetadata(metadata)
+   PhotoProcessor.expectCachedMetadata(metadata)
    local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-WB_RGGBLevels=%s" "-ColorTempAsShot=%s" "%s"',
                               metadata.WhiteBalance, metadata.WB_RGGBLevelsAsShot, 
                               metadata.WB_RGGBLevels, metadata.ColorTempAsShot, 
@@ -275,7 +280,8 @@ function PhotoProcessor.restoreFileMetadata(photo, metadata)
 
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
-         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
+         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')
+         photo:setPropertyForPlugin(_PLUGIN, 'WhiteBalanceOverride', nil)     
    end, { timeout=60 })
 end
 
@@ -354,7 +360,7 @@ function PhotoProcessor.runCommandSave(photo, newWb)
    logger:trace("Entering runCommandSave", photo.path)
 
    --Don't write the file unless the original metadata is stored in the catalog
-   local metadata = PhotoProcessor.loadMetadataFromCatalog()
+   local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
    if metadata.fileStatus ~= 'loadedMetadata' then
       logger:trace("Can't save file", metadata.fileStatus, photo.path)
       return
@@ -372,7 +378,7 @@ function PhotoProcessor.runCommandRevert(photo)
    logger:trace("Entering runCommandRevert", photo.path)
 
    --Only saved files can be reverted
-   local metadata = PhotoProcessor.loadMetadataFromCatalog()
+   local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
    if metadata.fileStatus ~= 'changedOnDisk' then
       logger:trace("Can't revert file", metadata.fileStatus, photo.path)
       return
