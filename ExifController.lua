@@ -35,13 +35,19 @@ BinaryIo.BytesToInt16 = function(b1, b2)
    return b1 + b2*256
 end
 
-BinaryIo.SaveInt16 = function(file, addr, i)
-   file:seek("set", addr)
+BinaryIo.ReadInt16 = function(file)
+   return BinaryIo.BytesToInt16(file:read(2):byte(1,2))
+end
+
+BinaryIo.ReadInt32 = function(file)
+   return BinaryIo.BytesToInt32(file:read(4):byte(1,4))
+end
+
+BinaryIo.SaveInt16 = function(file, i)
    file:write(BinaryIo.Int16ToBytes(i))
 end
 
-BinaryIo.SaveInt16Array = function(file, addr, a)
-   file:seek("set", addr)
+BinaryIo.SaveInt16Array = function(file, a)
    for i,v in ipairs(a) do
       file:write(BinaryIo.Int16ToBytes(v))
    end
@@ -88,7 +94,8 @@ end
 
 local function white_balance_from_string(file, addr, s)
    local i = Conversion.Convert(s, Conversion.WhiteBalance.FromString)
-   BinaryIo.SaveInt16(file, addr, i)
+   file:seek("set", addr)
+   BinaryIo.SaveInt16(file, i)
    return i
 end
 
@@ -96,7 +103,8 @@ end
 local function levels_from_string(file, addr, s)
    --todo: validate
    local i1,i2,i3,i4 = string.match(s, "^(%d+) (%d+) (%d+) (%d+)$")
-   BinaryIo.SaveInt16Array(file, addr, {i1, i2, i3, i4})
+   file:seek("set", addr)
+   BinaryIo.SaveInt16Array(file, {i1, i2, i3, i4})
    return {i1,i2,i3,i4}
 end
 
@@ -107,7 +115,8 @@ end
 local function color_temp_from_string(file, addr, s)
    --todo:validate
    local i = tonumber(s) or error("failed to parse "..s)
-   BinaryIo.SaveInt16(file, addr, i)
+   file:seek("set", addr)
+   BinaryIo.SaveInt16(file, i)
    return i
 end
 
@@ -224,7 +233,7 @@ function IfdTable:Create(name, file, addr, map)
    --print(string.format("0x%x %s", addr, name))
    local o = { file=file, address=addr, entries = {} }
    o.file:seek("set", o.address)
-   local entries = BinaryIo.BytesToInt16(o.file:read(2):byte(1,2))
+   local entries = BinaryIo.ReadInt16(o.file)
    for i = 1,entries do
       local offset = o.file:seek();
       local bytes = o.file:read(12)
@@ -234,7 +243,7 @@ function IfdTable:Create(name, file, addr, map)
       local val = BinaryIo.BytesToInt32(bytes:byte(9,12))
       o.entries[tag] = {tag_type=typ, count=num, value=val, address=addr}
    end
-   o.next_ifd = BinaryIo.BytesToInt32(o.file:read(4):byte(1,4))
+   o.next_ifd = BinaryIo.ReadInt32(o.file)
 
    setmetatable(o, self)
    self.__index = self
@@ -260,7 +269,7 @@ function Cr2File:Create(filename)
 
    o.file = assert(io.open(filename, "r+b"))
    o.file:seek("set", 4)
-   local ifd0_offset = BinaryIo.BytesToInt32(o.file:read(4):byte(1,4))
+   local ifd0_offset = BinaryIo.ReadInt32(o.file)
 
    local ifd_0 = IfdTable:Create("IFD0", o.file, ifd0_offset)
    local ifd_exif = ifd_0:LoadSubTable("Exif", 0x8769)
@@ -315,9 +324,9 @@ local function process_photo(filename)
    print (cr2:GetValue('WB_RGGBLevelsAuto'))
    print (cr2:GetValue('ColorTempAuto'))
 
-   cr2:SetValue('WB_RGGBLevelsAsShot', '4 2 3 4')
-   cr2:SetValue('WhiteBalance', 'Tungsten')
-   cr2:SetValue('ColorTempAsShot', '4443')
+   cr2:SetValue('WB_RGGBLevelsAsShot', '1 2 3 4')
+   cr2:SetValue('WhiteBalance', 'Shade')
+   cr2:SetValue('ColorTempAsShot', '3443')
 
    print (cr2:GetValue('WhiteBalance'))
    print (cr2:GetValue('WB_RGGBLevelsAsShot'))
