@@ -14,6 +14,9 @@ local error = error
 
 setfenv(1, P)
 
+
+
+
 --move to io package
 local function int16_to_bytes(x)
     local b1=x%256  x=(x-x%256)/256
@@ -41,6 +44,7 @@ local function save_4_shorts(file, addr, i1, i2, i3, i4)
    file:write(int16_to_bytes(i3))
    file:write(int16_to_bytes(i4))
 end
+
 
 
 
@@ -76,7 +80,6 @@ Conversion.WhiteBalance = {
    }
 }
 
-
 local function white_balance_to_string(s)
    return Conversion.Convert(s, Conversion.WhiteBalance.ToString)
 end
@@ -105,6 +108,8 @@ local function color_temp_from_string(file, addr, s)
    save_1_short(file, addr, i)
    return i
 end
+
+
 
 
 local IFD0 = {
@@ -162,10 +167,6 @@ local ColorBalance4 = {
    }
 }
 
-local function get_label(key, map)
-   return string.format("[0x%04x]", key)
-end
-
 
 
 
@@ -211,7 +212,6 @@ function I16Array:new(name, file, addr, count)
       local offset = addr + 2 * (i - 1)
       local i16 = bytes_to_int16(bytes:byte(2*i-1,2*i))
       table.insert(o.array, {address=offset, value=i16})
-      --print(string.format("0x%08x: %-15s %-35s               %s", offset, name, get_label(i), i16))
    end
 
    setmetatable(o, self)
@@ -233,7 +233,6 @@ function I16Array:get_settable_entries(map, entries)
       end
 
       entries[tag.name] = SettableMetadata:new(tag.name, self.file, addr, value, tag.setter, tag.getter)
-      --print(string.format("0x%08x: %-15s %-35s               %s", addr, map.name, get_label(i).." "..tag.name, value))
    end
 end
 
@@ -254,7 +253,6 @@ function IfdTable:new(name, file, addr, map)
       local num = bytes_to_int32(bytes:byte(5,8))
       local val = bytes_to_int32(bytes:byte(9,12))
       o.entries[tag] = {tag_type=typ, count=num, value=val, address=addr}
-      --print(string.format("0x%08x: %-15s %-35s %4d %8d 0x%x", offset, name, get_label(tag, map), typ, num, val))
    end
    o.next_ifd = bytes_to_int32(o.file:read(4):byte(1,4))
 
@@ -284,15 +282,15 @@ function Cr2File:new(filename)
 
    o.file:seek("set", 4)
    local ifd0_offset = bytes_to_int32(o.file:read(4):byte(1,4))
-   o.ifd_0 = IfdTable:new("IFD0", o.file, ifd0_offset)
-   o.ifd_exif = o.ifd_0:LoadSubTable("Exif", 0x8769)
-   o.ifd_canon_maker_notes = o.ifd_exif:LoadSubTable("MakerNotes", 0x927c)
-   o.array_color_balance_4 = o.ifd_canon_maker_notes:LoadSubArray("ColorBalance4",0x4001)
-   o.array_shot_info = o.ifd_canon_maker_notes:LoadSubArray("ShotInfo", 0x04)
+   local ifd_0 = IfdTable:new("IFD0", o.file, ifd0_offset)
+   local ifd_exif = ifd_0:LoadSubTable("Exif", 0x8769)
+   local ifd_canon_maker_notes = ifd_exif:LoadSubTable("MakerNotes", 0x927c)
+   local array_color_balance_4 = ifd_canon_maker_notes:LoadSubArray("ColorBalance4",0x4001)
+   local array_shot_info = ifd_canon_maker_notes:LoadSubArray("ShotInfo", 0x04)
 
-   o.settable_metadata = {}
-   o.array_color_balance_4:get_settable_entries(ColorBalance4, o.settable_metadata)
-   o.array_shot_info:get_settable_entries(CanonShotInfo, o.settable_metadata)
+   o.metadata = {}
+   array_color_balance_4:get_settable_entries(ColorBalance4, o.metadata)
+   array_shot_info:get_settable_entries(CanonShotInfo, o.metadata)
 
    setmetatable(o, self)
    self.__index = self
@@ -300,13 +298,13 @@ function Cr2File:new(filename)
 end
 
 function Cr2File:PrintEntries()
-   for k,v in pairs(self.settable_metadata) do
+   for k,v in pairs(self.metadata) do
       print(string.format("0x%08x:  %-25s %-25s", v.address, k, v:GetValue()))
    end
 end
 
 function Cr2File:GetValue(tag)
-   local e = self.settable_metadata[tag]
+   local e = self.metadata[tag]
    if e then 
       return e:GetValue()
    end
@@ -314,7 +312,7 @@ function Cr2File:GetValue(tag)
 end
 
 function Cr2File:SetValue(tag,s)
-   local e = self.settable_metadata[tag]
+   local e = self.metadata[tag]
    if e then 
       e:SetValue(s)
    else
@@ -335,13 +333,12 @@ local function process_photo(filename)
 
    cr2:PrintEntries()
 
-   print (cr2:GetValue('WhiteBalance'))
-   print (cr2:GetValue('WB_RGGBLevelsAsShot'))
-   print (cr2:GetValue('ColorTempAsShot'))
+   print (cr2:GetValue('WB_RGGBLevelsAuto'))
+   print (cr2:GetValue('ColorTempAuto'))
 
    cr2:SetValue('WB_RGGBLevelsAsShot', '1 2 3 4')
-   cr2:SetValue('WhiteBalance', 'Auto')
-   cr2:SetValue('ColorTempAsShot', '4114')
+   cr2:SetValue('WhiteBalance', 'Shade')
+   cr2:SetValue('ColorTempAsShot', '4444')
 
    print (cr2:GetValue('WhiteBalance'))
    print (cr2:GetValue('WB_RGGBLevelsAsShot'))
