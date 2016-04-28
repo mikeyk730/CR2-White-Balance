@@ -11,6 +11,7 @@ local pairs = pairs
 local print = print
 local tonumber = tonumber
 local error = error
+local assert = assert
 
 setfenv(1, P)
 
@@ -111,28 +112,6 @@ end
 
 
 
-
-local IFD0 = {
-   name = "IFD0",
-   values = {
-      [0x8769] = {  name="ExifOffset" },
-   }
-}
-
-local Exif = {
-   name = "Exif",
-   values = {
-      [0x927c] = {  name="MakerNoteCanon" },
-   }   
-}
-
-local MakerNoteCanon = {
-   name = "MakerNoteCanon",
-   values = {
-      [0x04] = {  name="CanonShotInfo" },
-      [0x4001] = {  name="ColorData4" },
-   }   
-}
 
 local CanonShotInfo = {
    name = "CanonShotInfo",
@@ -276,19 +255,18 @@ end
 
 Cr2File = {}
 function Cr2File:new(filename)
-   local o = {}
+   local o = { metadata={} }
 
-   o.file = io.open(filename, "r+b")
-
+   o.file = assert(io.open(filename, "r+b"))
    o.file:seek("set", 4)
    local ifd0_offset = bytes_to_int32(o.file:read(4):byte(1,4))
+
    local ifd_0 = IfdTable:new("IFD0", o.file, ifd0_offset)
    local ifd_exif = ifd_0:LoadSubTable("Exif", 0x8769)
    local ifd_canon_maker_notes = ifd_exif:LoadSubTable("MakerNotes", 0x927c)
    local array_color_balance_4 = ifd_canon_maker_notes:LoadSubArray("ColorBalance4",0x4001)
    local array_shot_info = ifd_canon_maker_notes:LoadSubArray("ShotInfo", 0x04)
-
-   o.metadata = {}
+   
    array_color_balance_4:get_settable_entries(ColorBalance4, o.metadata)
    array_shot_info:get_settable_entries(CanonShotInfo, o.metadata)
 
