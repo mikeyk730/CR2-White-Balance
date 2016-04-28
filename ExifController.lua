@@ -12,38 +12,39 @@ local print = print
 local tonumber = tonumber
 local error = error
 local assert = assert
+local ipairs = ipairs
 
 setfenv(1, P)
 
 
 
 
---move to io package
-local function int16_to_bytes(x)
+BinaryIo = {}
+
+BinaryIo.Int16ToBytes = function(x)
     local b1=x%256  x=(x-x%256)/256
     local b2=x%256  x=(x-x%256)/256
     return string.char(b1,b2)
 end
 
-local function bytes_to_int32(b1, b2, b3, b4)
+BinaryIo.BytesToInt32 = function(b1, b2, b3, b4)
    return b1 + b2*256 + b3*65536 + b4*16777216
 end
 
-local function bytes_to_int16(b1, b2)
+BinaryIo.BytesToInt16 = function(b1, b2)
    return b1 + b2*256
 end
 
-local function save_1_short(file, addr, i)
+BinaryIo.SaveInt16 = function(file, addr, i)
    file:seek("set", addr)
-   file:write(int16_to_bytes(i))
+   file:write(BinaryIo.Int16ToBytes(i))
 end
 
-local function save_4_shorts(file, addr, i1, i2, i3, i4)
+BinaryIo.SaveInt16Array = function(file, addr, a)
    file:seek("set", addr)
-   file:write(int16_to_bytes(i1))
-   file:write(int16_to_bytes(i2))
-   file:write(int16_to_bytes(i3))
-   file:write(int16_to_bytes(i4))
+   for i,v in ipairs(a) do
+      file:write(BinaryIo.Int16ToBytes(v))
+   end
 end
 
 
@@ -87,7 +88,7 @@ end
 
 local function white_balance_from_string(file, addr, s)
    local i = Conversion.Convert(s, Conversion.WhiteBalance.FromString)
-   save_1_short(file, addr, i)
+   BinaryIo.SaveInt16(file, addr, i)
    return i
 end
 
@@ -95,7 +96,7 @@ end
 local function levels_from_string(file, addr, s)
    --todo: validate
    local i1,i2,i3,i4 = string.match(s, "^(%d+) (%d+) (%d+) (%d+)$")
-   save_4_shorts(file, addr, i1, i2, i3, i4)
+   BinaryIo.SaveInt16Array(file, addr, {i1, i2, i3, i4})
    return {i1,i2,i3,i4}
 end
 
@@ -106,7 +107,7 @@ end
 local function color_temp_from_string(file, addr, s)
    --todo:validate
    local i = tonumber(s) or error("failed to parse "..s)
-   save_1_short(file, addr, i)
+   BinaryIo.SaveInt16(file, addr, i)
    return i
 end
 
@@ -149,8 +150,8 @@ local ColorBalance4 = {
 
 
 
-SettableMetadata = {}
-function SettableMetadata:new(name, file, addr, value, setter, getter)
+MetadataEntry = {}
+function MetadataEntry:Create(name, file, addr, value, setter, getter)
    local o = {
       name = name,
       file = file,
@@ -165,12 +166,12 @@ function SettableMetadata:new(name, file, addr, value, setter, getter)
    return o
 end
 
-function SettableMetadata:SetValue(s)
+function MetadataEntry:SetValue(s)
    local v = self.setter(self.file, self.address, s)
    self.value = v
 end
 
-function SettableMetadata:GetValue()
+function MetadataEntry:GetValue()
    if self.getter then 
       return self.getter(self.value)
    else
@@ -182,14 +183,14 @@ end
 
 
 I16Array = {}
-function I16Array:new(name, file, addr, count)
+function I16Array:Create(name, file, addr, count)
    --print(string.format("0x%x %s", addr, name))   
    local o = { file=file, address=addr, size=count, array={}}
    o.file:seek("set", o.address)
    local bytes = o.file:read(count*2)
    for i = 1,count do
       local offset = addr + 2 * (i - 1)
-      local i16 = bytes_to_int16(bytes:byte(2*i-1,2*i))
+      local i16 = BinaryIo.BytesToInt16(bytes:byte(2*i-1,2*i))
       table.insert(o.array, {address=offset, value=i16})
    end
 
@@ -198,7 +199,7 @@ function I16Array:new(name, file, addr, count)
    return o
 end
 
-function I16Array:get_settable_entries(map, entries)
+function I16Array:GetMetadataInterface(map, entries)
     for i,tag in pairs(map.values) do
 
       local count = tag.count or 1
@@ -211,7 +212,7 @@ function I16Array:get_settable_entries(map, entries)
          value = self.array[i+1].value
       end
 
-      entries[tag.name] = SettableMetadata:new(tag.name, self.file, addr, value, tag.setter, tag.getter)
+      entries[tag.name] = MetadataEntry:Create(tag.name, self.file, addr, value, tag.setter, tag.getter)
    end
 end
 
@@ -219,21 +220,21 @@ end
 
 
 IfdTable = {}
-function IfdTable:new(name, file, addr, map)
+function IfdTable:Create(name, file, addr, map)
    --print(string.format("0x%x %s", addr, name))
    local o = { file=file, address=addr, entries = {} }
    o.file:seek("set", o.address)
-   local entries = bytes_to_int16(o.file:read(2):byte(1,2))
+   local entries = BinaryIo.BytesToInt16(o.file:read(2):byte(1,2))
    for i = 1,entries do
       local offset = o.file:seek();
       local bytes = o.file:read(12)
-      local tag = bytes_to_int16(bytes:byte(1,2))
-      local typ = bytes_to_int16(bytes:byte(3,4))
-      local num = bytes_to_int32(bytes:byte(5,8))
-      local val = bytes_to_int32(bytes:byte(9,12))
+      local tag = BinaryIo.BytesToInt16(bytes:byte(1,2))
+      local typ = BinaryIo.BytesToInt16(bytes:byte(3,4))
+      local num = BinaryIo.BytesToInt32(bytes:byte(5,8))
+      local val = BinaryIo.BytesToInt32(bytes:byte(9,12))
       o.entries[tag] = {tag_type=typ, count=num, value=val, address=addr}
    end
-   o.next_ifd = bytes_to_int32(o.file:read(4):byte(1,4))
+   o.next_ifd = BinaryIo.BytesToInt32(o.file:read(4):byte(1,4))
 
    setmetatable(o, self)
    self.__index = self
@@ -242,33 +243,33 @@ end
 
 function IfdTable:LoadSubTable(name, tag, map)
    local offset = self.entries[tag].value
-   return IfdTable:new(name, self.file, offset, map)
+   return IfdTable:Create(name, self.file, offset, map)
 end
 
 function IfdTable:LoadSubArray(name, tag, map)
    local entry = self.entries[tag];
-   return I16Array:new(name, self.file, entry.value, entry.count)
+   return I16Array:Create(name, self.file, entry.value, entry.count)
 end
 
 
 
 
 Cr2File = {}
-function Cr2File:new(filename)
+function Cr2File:Create(filename)
    local o = { metadata={} }
 
    o.file = assert(io.open(filename, "r+b"))
    o.file:seek("set", 4)
-   local ifd0_offset = bytes_to_int32(o.file:read(4):byte(1,4))
+   local ifd0_offset = BinaryIo.BytesToInt32(o.file:read(4):byte(1,4))
 
-   local ifd_0 = IfdTable:new("IFD0", o.file, ifd0_offset)
+   local ifd_0 = IfdTable:Create("IFD0", o.file, ifd0_offset)
    local ifd_exif = ifd_0:LoadSubTable("Exif", 0x8769)
    local ifd_canon_maker_notes = ifd_exif:LoadSubTable("MakerNotes", 0x927c)
    local array_color_balance_4 = ifd_canon_maker_notes:LoadSubArray("ColorBalance4",0x4001)
    local array_shot_info = ifd_canon_maker_notes:LoadSubArray("ShotInfo", 0x04)
    
-   array_color_balance_4:get_settable_entries(ColorBalance4, o.metadata)
-   array_shot_info:get_settable_entries(CanonShotInfo, o.metadata)
+   array_color_balance_4:GetMetadataInterface(ColorBalance4, o.metadata)
+   array_shot_info:GetMetadataInterface(CanonShotInfo, o.metadata)
 
    setmetatable(o, self)
    self.__index = self
@@ -298,7 +299,7 @@ function Cr2File:SetValue(tag,s)
    end
 end
 
-function Cr2File:close()
+function Cr2File:Close()
    self.file:close()
 end
 
@@ -307,22 +308,22 @@ end
 
 local function process_photo(filename)
 
-   local cr2 = Cr2File:new(filename)
+   local cr2 = Cr2File:Create(filename)
 
    cr2:PrintEntries()
 
    print (cr2:GetValue('WB_RGGBLevelsAuto'))
    print (cr2:GetValue('ColorTempAuto'))
 
-   cr2:SetValue('WB_RGGBLevelsAsShot', '1 2 3 4')
-   cr2:SetValue('WhiteBalance', 'Shade')
-   cr2:SetValue('ColorTempAsShot', '4444')
+   cr2:SetValue('WB_RGGBLevelsAsShot', '4 2 3 4')
+   cr2:SetValue('WhiteBalance', 'Tungsten')
+   cr2:SetValue('ColorTempAsShot', '4443')
 
    print (cr2:GetValue('WhiteBalance'))
    print (cr2:GetValue('WB_RGGBLevelsAsShot'))
    print (cr2:GetValue('ColorTempAsShot'))
 
-   cr2:close()
+   cr2:Close()
 end
 
 
