@@ -43,11 +43,11 @@ BinaryIo.ReadInt32 = function(file)
    return BinaryIo.BytesToInt32(file:read(4):byte(1,4))
 end
 
-BinaryIo.SaveInt16 = function(file, i)
+BinaryIo.WriteInt16 = function(file, i)
    file:write(BinaryIo.Int16ToBytes(i))
 end
 
-BinaryIo.SaveInt16Array = function(file, a)
+BinaryIo.WriteInt16Array = function(file, a)
    for i,v in ipairs(a) do
       file:write(BinaryIo.Int16ToBytes(v))
    end
@@ -95,7 +95,7 @@ end
 local function white_balance_from_string(file, addr, s)
    local i = Conversion.Convert(s, Conversion.WhiteBalance.FromString)
    file:seek("set", addr)
-   BinaryIo.SaveInt16(file, i)
+   BinaryIo.WriteInt16(file, i)
    return i
 end
 
@@ -104,7 +104,7 @@ local function levels_from_string(file, addr, s)
    --todo: validate
    local i1,i2,i3,i4 = string.match(s, "^(%d+) (%d+) (%d+) (%d+)$")
    file:seek("set", addr)
-   BinaryIo.SaveInt16Array(file, {i1, i2, i3, i4})
+   BinaryIo.WriteInt16Array(file, {i1, i2, i3, i4})
    return {i1,i2,i3,i4}
 end
 
@@ -116,7 +116,7 @@ local function color_temp_from_string(file, addr, s)
    --todo:validate
    local i = tonumber(s) or error("failed to parse "..s)
    file:seek("set", addr)
-   BinaryIo.SaveInt16(file, i)
+   BinaryIo.WriteInt16(file, i)
    return i
 end
 
