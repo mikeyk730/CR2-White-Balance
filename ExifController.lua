@@ -209,16 +209,22 @@ function I16Array:Create(name, file, addr, count)
 end
 
 function I16Array:GetMetadataInterface(map, entries)
-    for i,tag in pairs(map.values) do
+   for offset,tag in pairs(map.values) do      
+      local i = offset + 1
+
+      local addr = self.array[i].address
 
       local count = tag.count or 1
-      local addr = self.array[i+1].address
       local value
-      if count == 4 then
-         value = {self.array[i+1].value, self.array[i+2].value, 
-                  self.array[i+3].value, self.array[i+4].value }
-      elseif count == 1 then
-         value = self.array[i+1].value
+      if count == 1 then
+         value = self.array[i].value
+      elseif count > 1 then
+         value = {}
+         for j=i,i+count-1 do
+            table.insert(value, self.array[j].value)
+         end
+      else
+         error("Unknown value for count")
       end
 
       entries[tag.name] = MetadataEntry:Create(tag.name, self.file, addr, value, tag.setter, tag.getter)
