@@ -44,30 +44,6 @@ end
 
 
 
-SettableMetadata = {}
-function SettableMetadata:new(name, file, addr, value, setter)
-   local o = {
-      name = name,
-      file = file,
-      address = addr,
-      value = value, 
-      setter = setter
-   }
-
-   setmetatable(o, self)
-   self.__index = self
-   return o
-end
-
-function SettableMetadata:SetValue(s)
-   local v = self.setter(self.file, self.address, s)
-   self.value = v
-end
-
-function SettableMetadata:GetValue()
-   return self.value
-end
-
 local Conversion = {
    Convert = function(i, map)
       local v = map[i]
@@ -100,6 +76,11 @@ Conversion.WhiteBalance = {
    }
 }
 
+
+local function white_balance_to_string(s)
+   return Conversion.Convert(s, Conversion.WhiteBalance.ToString)
+end
+
 local function white_balance_from_string(file, addr, s)
    local i = Conversion.Convert(s, Conversion.WhiteBalance.FromString)
    save_1_short(file, addr, i)
@@ -111,16 +92,19 @@ local function levels_from_string(file, addr, s)
    --todo: validate
    local i1,i2,i3,i4 = string.match(s, "^(%d+) (%d+) (%d+) (%d+)$")
    save_4_shorts(file, addr, i1, i2, i3, i4)
-   return s
+   return {i1,i2,i3,i4}
+end
+
+local function levels_to_string(a)
+   return string.format(string.rep("%d ", 4), a[1], a[2], a[3], a[4])
 end
 
 local function color_temp_from_string(file, addr, s)
    --todo:validate
    local i = tonumber(s) or error("failed to parse "..s)
    save_1_short(file, addr, i)
-   return s
+   return i
 end
-
 
 
 local IFD0 = {
@@ -148,33 +132,33 @@ local MakerNoteCanon = {
 local CanonShotInfo = {
    name = "CanonShotInfo",
    values = {
-      [7] = {   name="WhiteBalance",                      setter=white_balance_from_string },
+      [7] = {   name="WhiteBalance",            count=1,   setter=white_balance_from_string,   getter=white_balance_to_string },
    }
 }
 
 local ColorBalance4 = {
    name = "ColorBalance4",
    values = {
-      [63] = {  name="WB_RGGBLevelsAsShot",     count=4,  setter=levels_from_string        },
-      [67] = {  name="ColorTempAsShot",                   setter=color_temp_from_string    },
-      [68] = {  name="WB_RGGBLevelsAuto",       count=4 },
-      [72] = {  name="ColorTempAuto",                   },
-      [73] = {  name="WB_RGGBLevelsMeasured",   count=4 },
-      [77] = {  name="ColorTempMeasured",               },
-      [83] = {  name="WB_RGGBLevelsDaylight",   count=4 },
-      [87] = {  name="ColorTempDaylight",               },
-      [88] = {  name="WB_RGGBLevelsShade",      count=4 },
-      [92] = {  name="ColorTempShade",                  },
-      [93] = {  name="WB_RGGBLevelsCloudy",     count=4 },
-      [97] = {  name="ColorTempCloudy",                 },
-      [98] = {  name="WB_RGGBLevelsTungsten",   count=4 },
-      [102] = { name="ColorTempTungsten",               },
-      [103] = { name="WB_RGGBLevelsFluorescent",count=4 },
-      [107] = { name="ColorTempFluorescent",            },
-      [108] = { name="WB_RGGBLevelsKelvin",     count=4 },
-      [112] = { name="ColorTempKelvin",                 },
-      [113] = { name="WB_RGGBLevelsFlash",      count=4 },
-      [117] = { name="ColorTempFlash",                  },
+      [63] = {  name="WB_RGGBLevelsAsShot",     count=4,   setter=levels_from_string,          getter=levels_to_string        },
+      [67] = {  name="ColorTempAsShot",         count=1,   setter=color_temp_from_string                                      },
+      [68] = {  name="WB_RGGBLevelsAuto",       count=4,   setter=levels_from_string,          getter=levels_to_string        },
+      [72] = {  name="ColorTempAuto",           count=1,   setter=color_temp_from_string                                      },
+      [73] = {  name="WB_RGGBLevelsMeasured",   count=4,   setter=levels_from_string,          getter=levels_to_string        },
+      [77] = {  name="ColorTempMeasured",       count=1,   setter=color_temp_from_string                                      },
+      [83] = {  name="WB_RGGBLevelsDaylight",   count=4,   setter=levels_from_string,          getter=levels_to_string        },
+      [87] = {  name="ColorTempDaylight",       count=1,   setter=color_temp_from_string                                      },
+      [88] = {  name="WB_RGGBLevelsShade",      count=4,   setter=levels_from_string,          getter=levels_to_string        },
+      [92] = {  name="ColorTempShade",          count=1,   setter=color_temp_from_string                                      },
+      [93] = {  name="WB_RGGBLevelsCloudy",     count=4,   setter=levels_from_string,          getter=levels_to_string        },
+      [97] = {  name="ColorTempCloudy",         count=1,   setter=color_temp_from_string                                      },
+      [98] = {  name="WB_RGGBLevelsTungsten",   count=4,   setter=levels_from_string,          getter=levels_to_string        },
+      [102] = { name="ColorTempTungsten",       count=1,   setter=color_temp_from_string                                      },
+      [103] = { name="WB_RGGBLevelsFluorescent",count=4,   setter=levels_from_string,          getter=levels_to_string        },
+      [107] = { name="ColorTempFluorescent",    count=1,   setter=color_temp_from_string                                      },
+      [108] = { name="WB_RGGBLevelsKelvin",     count=4,   setter=levels_from_string,          getter=levels_to_string        },
+      [112] = { name="ColorTempKelvin",         count=1,   setter=color_temp_from_string                                      },
+      [113] = { name="WB_RGGBLevelsFlash",      count=4,   setter=levels_from_string,          getter=levels_to_string        },
+      [117] = { name="ColorTempFlash",          count=1,   setter=color_temp_from_string                                      },
    }
 }
 
@@ -185,9 +169,39 @@ end
 
 
 
+SettableMetadata = {}
+function SettableMetadata:new(name, file, addr, value, setter, getter)
+   local o = {
+      name = name,
+      file = file,
+      address = addr,
+      value = value, 
+      setter = setter,
+      getter = getter
+   }
+
+   setmetatable(o, self)
+   self.__index = self
+   return o
+end
+
+function SettableMetadata:SetValue(s)
+   local v = self.setter(self.file, self.address, s)
+   self.value = v
+end
+
+function SettableMetadata:GetValue()
+   if self.getter then 
+      return self.getter(self.value)
+   else
+      return self.value
+   end
+end
+
+
+
 
 I16Array = {}
-
 function I16Array:new(name, file, addr, count)
    --print(string.format("0x%x %s", addr, name))   
    local o = { file=file, address=addr, size=count, array={}}
@@ -199,7 +213,6 @@ function I16Array:new(name, file, addr, count)
       table.insert(o.array, {address=offset, value=i16})
       --print(string.format("0x%08x: %-15s %-35s               %s", offset, name, get_label(i), i16))
    end
-
 
    setmetatable(o, self)
    self.__index = self
@@ -213,17 +226,16 @@ function I16Array:get_settable_entries(map, entries)
       local addr = self.array[i+1].address
       local value
       if count == 4 then
-         value = string.format(string.rep("%d ", 4), self.array[i+1].value, self.array[i+2].value, 
-                               self.array[i+3].value, self.array[i+4].value)
+         value = {self.array[i+1].value, self.array[i+2].value, 
+                  self.array[i+3].value, self.array[i+4].value }
       elseif count == 1 then
-         value = string.format("%d", self.array[i+1].value)
+         value = self.array[i+1].value
       end
 
-      entries[tag.name] = SettableMetadata:new(tag.name, self.file, addr, value, tag.setter)
+      entries[tag.name] = SettableMetadata:new(tag.name, self.file, addr, value, tag.setter, tag.getter)
       --print(string.format("0x%08x: %-15s %-35s               %s", addr, map.name, get_label(i).." "..tag.name, value))
    end
 end
-
 
 
 
@@ -262,6 +274,8 @@ function IfdTable:LoadSubArray(name, tag, map)
 end
 
 
+
+
 Cr2File = {}
 function Cr2File:new(filename)
    local o = {}
@@ -287,7 +301,7 @@ end
 
 function Cr2File:PrintEntries()
    for k,v in pairs(self.settable_metadata) do
-      print(string.format("0x%08x:  %-25s %-25s", v.address, k, v.value))
+      print(string.format("0x%08x:  %-25s %-25s", v.address, k, v:GetValue()))
    end
 end
 
@@ -312,6 +326,9 @@ function Cr2File:close()
    self.file:close()
 end
 
+
+
+
 local function process_photo(filename)
 
    local cr2 = Cr2File:new(filename)
@@ -322,9 +339,9 @@ local function process_photo(filename)
    print (cr2:GetValue('WB_RGGBLevelsAsShot'))
    print (cr2:GetValue('ColorTempAsShot'))
 
-   cr2:SetValue('WB_RGGBLevelsAsShot', '4 2 3 4')
-   cr2:SetValue('WhiteBalance', 'Shade')
-   cr2:SetValue('ColorTempAsShot', '4444')
+   cr2:SetValue('WB_RGGBLevelsAsShot', '1 2 3 4')
+   cr2:SetValue('WhiteBalance', 'Auto')
+   cr2:SetValue('ColorTempAsShot', '4114')
 
    print (cr2:GetValue('WhiteBalance'))
    print (cr2:GetValue('WB_RGGBLevelsAsShot'))
@@ -333,12 +350,10 @@ local function process_photo(filename)
    cr2:close()
 end
 
+
+
+
+
 --local filename = '20140715-IMG_6900o.CR2'
 local filename = 'IMG_4576.CR2'
 process_photo(filename)
-
-Cr2ExifController = {
-   new = new,
-   get_value = get_value,
-   set_value = set_value
-}
