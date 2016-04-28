@@ -16,11 +16,11 @@ return {
          file = "MenuItemChangeWhiteBalance.lua",
          enabledWhen = "photosSelected",
       },
-      --{
-      --   title = "&Load Metadata From File",
-      --   file = "MenuItemCheckWhiteBalance.lua",
-      --   enabledWhen = "photosSelected",
-      --},
+      {
+         title = "&Load Metadata From File",
+         file = "MenuItemCheckWhiteBalance.lua",
+         enabledWhen = "photosSelected",
+      },
       --{
       --   title = "Clear Unsaved Metadata",
       --   file = "MenuItemClearWhiteBalance.lua",
