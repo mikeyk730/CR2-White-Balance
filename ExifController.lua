@@ -13,61 +13,6 @@ local tonumber = tonumber
 
 setfenv(1, P)
 
-local IFD0 = {
-   name = "IFD0",
-   values = {
-      [0x8769] = {  name="ExifOffset" },
-   }
-}
-
-local Exif = {
-   name = "Exif",
-   values = {
-      [0x927c] = {  name="MakerNoteCanon" },
-   }   
-}
-
-local MakerNoteCanon = {
-   name = "MakerNoteCanon",
-   values = {
-      [0x04] = {  name="CanonShotInfo" },
-      [0x4001] = {  name="ColorData4" },
-   }   
-}
-
-local CanonShotInfo = {
-   name = "CanonShotInfo",
-   values = {
-      [7] = {   name="WhiteBalance" },
-   }
-}
-
-local ColorBalance4 = {
-   name = "ColorBalance4",
-   values = {
-      [63] = {  name="WB_RGGBLevelsAsShot",     count=4 },
-      [67] = {  name="ColorTempAsShot",                 },
-      [68] = {  name="WB_RGGBLevelsAuto",       count=4 },
-      [72] = {  name="ColorTempAuto",                   },
-      [73] = {  name="WB_RGGBLevelsMeasured",   count=4 },
-      [77] = {  name="ColorTempMeasured",               },
-      [83] = {  name="WB_RGGBLevelsDaylight",   count=4 },
-      [87] = {  name="ColorTempDaylight",               },
-      [88] = {  name="WB_RGGBLevelsShade",      count=4 },
-      [92] = {  name="ColorTempShade",                  },
-      [93] = {  name="WB_RGGBLevelsCloudy",     count=4 },
-      [97] = {  name="ColorTempCloudy",                 },
-      [98] = {  name="WB_RGGBLevelsTungsten",   count=4 },
-      [102] = { name="ColorTempTungsten",               },
-      [103] = { name="WB_RGGBLevelsFluorescent",count=4 },
-      [107] = { name="ColorTempFluorescent",            },
-      [108] = { name="WB_RGGBLevelsKelvin",     count=4 },
-      [112] = { name="ColorTempKelvin",                 },
-      [113] = { name="WB_RGGBLevelsFlash",      count=4 },
-      [117] = { name="ColorTempFlash",                  },
-   }
-}
-
 local function int16_to_bytes(x)
     local b1=x%256  x=(x-x%256)/256
     local b2=x%256  x=(x-x%256)/256
@@ -82,10 +27,6 @@ local function bytes_to_int16(b1, b2)
    return b1 + b2*256
 end
 
-local function get_label(key, map)
-   return string.format("[0x%04x]", key)
-end
-
 local function save_1_short(file, addr, i)
    file:seek("set", addr)
    file:write(int16_to_bytes(i))
@@ -98,6 +39,7 @@ local function save_4_shorts(file, addr, i1, i2, i3, i4)
    file:write(int16_to_bytes(i3))
    file:write(int16_to_bytes(i4))
 end
+
 
 local function white_balance_from_string(file, addr, s)
    local map = {
@@ -141,6 +83,69 @@ end
 
 
 
+local IFD0 = {
+   name = "IFD0",
+   values = {
+      [0x8769] = {  name="ExifOffset" },
+   }
+}
+
+local Exif = {
+   name = "Exif",
+   values = {
+      [0x927c] = {  name="MakerNoteCanon" },
+   }   
+}
+
+local MakerNoteCanon = {
+   name = "MakerNoteCanon",
+   values = {
+      [0x04] = {  name="CanonShotInfo" },
+      [0x4001] = {  name="ColorData4" },
+   }   
+}
+
+local CanonShotInfo = {
+   name = "CanonShotInfo",
+   values = {
+      [7] = {   name="WhiteBalance",                      setter=white_balance_from_string },
+   }
+}
+
+local ColorBalance4 = {
+   name = "ColorBalance4",
+   values = {
+      [63] = {  name="WB_RGGBLevelsAsShot",     count=4,  setter=levels_from_string        },
+      [67] = {  name="ColorTempAsShot",                   setter=color_temp_from_string    },
+      [68] = {  name="WB_RGGBLevelsAuto",       count=4 },
+      [72] = {  name="ColorTempAuto",                   },
+      [73] = {  name="WB_RGGBLevelsMeasured",   count=4 },
+      [77] = {  name="ColorTempMeasured",               },
+      [83] = {  name="WB_RGGBLevelsDaylight",   count=4 },
+      [87] = {  name="ColorTempDaylight",               },
+      [88] = {  name="WB_RGGBLevelsShade",      count=4 },
+      [92] = {  name="ColorTempShade",                  },
+      [93] = {  name="WB_RGGBLevelsCloudy",     count=4 },
+      [97] = {  name="ColorTempCloudy",                 },
+      [98] = {  name="WB_RGGBLevelsTungsten",   count=4 },
+      [102] = { name="ColorTempTungsten",               },
+      [103] = { name="WB_RGGBLevelsFluorescent",count=4 },
+      [107] = { name="ColorTempFluorescent",            },
+      [108] = { name="WB_RGGBLevelsKelvin",     count=4 },
+      [112] = { name="ColorTempKelvin",                 },
+      [113] = { name="WB_RGGBLevelsFlash",      count=4 },
+      [117] = { name="ColorTempFlash",                  },
+   }
+}
+
+local function get_label(key, map)
+   return string.format("[0x%04x]", key)
+end
+
+
+
+
+
 I16Array = {}
 
 function I16Array:new(name, file, addr, count)
@@ -165,15 +170,14 @@ function I16Array:get_entries(map, entries)
     for i,tag in pairs(map.values) do
 
       local count = tag.count or 1
+      local setter = tag.setter
       local addr = self.array[i+1].address
-      local value, setter
+      local value
       if count == 4 then
          value = string.format(string.rep("%d ", 4), self.array[i+1].value, self.array[i+2].value, 
                                self.array[i+3].value, self.array[i+4].value)
-         setter = save_4_shorts
       elseif count == 1 then
          value = string.format("%d", self.array[i+1].value)
-         setter = save_1_short
       end
 
       entries[tag.name] = { 
@@ -225,9 +229,6 @@ function IfdTable:LoadArray(name, file, tag, map)
 end
 
 
-
-
-
 Cr2File = {}
 function Cr2File:new(filename)
    o = {}
@@ -242,35 +243,54 @@ function Cr2File:new(filename)
    o.array_color_balance_4 = o.ifd_canon_maker_notes:LoadArray("ColorBalance4", o.file, 0x4001)
    o.array_shot_info = o.ifd_canon_maker_notes:LoadArray("ShotInfo", o.file, 0x04)
 
+   o.entries = {}
+   o.array_color_balance_4:get_entries(ColorBalance4, o.entries)
+   o.array_shot_info:get_entries(CanonShotInfo, o.entries)
+
+
    setmetatable(o, self)
    self.__index = self
    return o
+end
+
+function Cr2File:PrintEntries()
+   for k,v in pairs(self.entries) do
+      print(string.format("0x%08x: %dx  %-25s %-25s", v.address, v.count, k, v.value))
+   end
+end
+
+function Cr2File:GetValue(tag)
+   local e = self.entries[tag]
+   if e then 
+      return e.value
+   end
+   return nil
+end
+
+function Cr2File:SetValue(tag,s)
+   local e = self.entries[tag]
+   e.setter(self.file, e.address, s)
+end
+
+function Cr2File:close()
+   self.file:close()
 end
 
 local function process_photo(filename)
 
    local cr2 = Cr2File:new(filename)
 
-   local entries = {}
-   cr2.array_color_balance_4:get_entries(ColorBalance4, entries)
-   cr2.array_shot_info:get_entries(CanonShotInfo, entries)
+   cr2:PrintEntries()
 
-   for k,v in pairs(entries) do
-      print(string.format("0x%08x: %dx  %-25s %-25s", v.address, v.count, k, v.value))
-   end
+   print (cr2:GetValue('WhiteBalance'))
+   print (cr2:GetValue('WB_RGGBLevelsAsShot'))
+   print (cr2:GetValue('ColorTempAsShot'))
 
-   local e = entries['WhiteBalance']
-   --e.setter(cr2.file, e.address, 4)
-   white_balance_from_string(cr2.file, e.address, "Auto")
+   cr2:SetValue('WB_RGGBLevelsAsShot', '1 2 3 4')
+   cr2:SetValue('WhiteBalance', 'Shade')
+   cr2:SetValue('ColorTempAsShot', '4444')
 
-   local f = entries['WB_RGGBLevelsAsShot']
-   --f.setter(cr2.file, f.address, 2315, 1024, 1024, 1311)
-   levels_from_string(cr2.file, f.address, "1211 2211 3211 4211")
-
-   local ct = entries['ColorTempAsShot']
-   color_temp_from_string(cr2.file, ct.address, "4999")
-
-   cr2.file:close()
+   cr2:close()
 end
 
 --local filename = '20140715-IMG_6900o.CR2'
