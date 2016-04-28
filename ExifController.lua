@@ -60,31 +60,50 @@ function SettableMetadata:new(name, file, addr, value, setter)
 end
 
 function SettableMetadata:SetValue(s)
-   self.setter(self.file, self.address, s)
-   --self.value = s
+   local v = self.setter(self.file, self.address, s)
+   self.value = v
 end
 
 function SettableMetadata:GetValue()
    return self.value
 end
 
+local Conversion = {
+   Convert = function(i, map)
+      local v = map[i]
+      if v then
+         return v
+      else
+         error("Couldn't convert input '"..i.."'")
+      end
+   end
+}
 
-local function white_balance_from_string(file, addr, s)
-   local values_WhiteBalance = {
+Conversion.WhiteBalance = {
+   FromString = {
       Auto=0,
       Daylight=1,
-      Shade=8,
       Cloudy=2,
       Tungsten=3,
       Fluorescent=4,
       Flash=5,
+      Shade=8,
+   },
+   ToString = {
+      [0]="Auto",
+      [1]="Daylight",
+      [2]="Cloudy",
+      [3]="Tungsten",
+      [4]="Fluorescent",
+      [5]="Flash",
+      [8]="Shade",
    }
-   local i = values_WhiteBalance[s] 
-   if i then
-      save_1_short(file, addr, i)
-   else
-      error("Couldn't parse WhiteBalance value '"..s.."'")
-   end
+}
+
+local function white_balance_from_string(file, addr, s)
+   local i = Conversion.Convert(s, Conversion.WhiteBalance.FromString)
+   save_1_short(file, addr, i)
+   return i
 end
 
 --todo: self??
@@ -92,12 +111,14 @@ local function levels_from_string(file, addr, s)
    --todo: validate
    local i1,i2,i3,i4 = string.match(s, "^(%d+) (%d+) (%d+) (%d+)$")
    save_4_shorts(file, addr, i1, i2, i3, i4)
+   return s
 end
 
 local function color_temp_from_string(file, addr, s)
    --todo:validate
    local i = tonumber(s) or error("failed to parse "..s)
    save_1_short(file, addr, i)
+   return s
 end
 
 
