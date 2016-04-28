@@ -14,6 +14,7 @@ local error = error
 
 setfenv(1, P)
 
+--move to io package
 local function int16_to_bytes(x)
     local b1=x%256  x=(x-x%256)/256
     local b2=x%256  x=(x-x%256)/256
@@ -42,30 +43,13 @@ local function save_4_shorts(file, addr, i1, i2, i3, i4)
 end
 
 
-local function white_balance_from_string(file, addr, s)
-   local map = {
-      Auto=0,
-      Daylight=1,
-      Shade=8,
-      Cloudy=2,
-      Tungsten=3,
-      Fluorescent=4,
-      Flash=5,
-   }
-   local i = map[s] 
-   if i then
-      save_1_short(file, addr, i)
-   else
-      error("Couldn't parse WhiteBalance value '"..s.."'")
-   end
-end
-
 
 SettableMetadata = {}
-function SettableMetadata:new(name, addr, value, setter)
+function SettableMetadata:new(name, file, addr, value, setter)
    local o = {
       name = name,
-      address = addr, 
+      file = file,
+      address = addr,
       value = value, 
       setter = setter
    }
@@ -75,8 +59,8 @@ function SettableMetadata:new(name, addr, value, setter)
    return o
 end
 
-function SettableMetadata:SetValue(file, s)
-   self.setter(file, self.address, s)
+function SettableMetadata:SetValue(s)
+   self.setter(self.file, self.address, s)
    --self.value = s
 end
 
@@ -85,6 +69,23 @@ function SettableMetadata:GetValue()
 end
 
 
+local function white_balance_from_string(file, addr, s)
+   local values_WhiteBalance = {
+      Auto=0,
+      Daylight=1,
+      Shade=8,
+      Cloudy=2,
+      Tungsten=3,
+      Fluorescent=4,
+      Flash=5,
+   }
+   local i = values_WhiteBalance[s] 
+   if i then
+      save_1_short(file, addr, i)
+   else
+      error("Couldn't parse WhiteBalance value '"..s.."'")
+   end
+end
 
 --todo: self??
 local function levels_from_string(file, addr, s)
@@ -98,7 +99,6 @@ local function color_temp_from_string(file, addr, s)
    local i = tonumber(s) or error("failed to parse "..s)
    save_1_short(file, addr, i)
 end
-
 
 
 
@@ -169,9 +169,9 @@ I16Array = {}
 
 function I16Array:new(name, file, addr, count)
    --print(string.format("0x%x %s", addr, name))   
-   local o = { address=addr, size=count, array={}}
-   file:seek("set", addr)
-   local bytes = file:read(count*2)
+   local o = { file=file, address=addr, size=count, array={}}
+   o.file:seek("set", o.address)
+   local bytes = o.file:read(count*2)
    for i = 1,count do
       local offset = addr + 2 * (i - 1)
       local i16 = bytes_to_int16(bytes:byte(2*i-1,2*i))
@@ -185,7 +185,7 @@ function I16Array:new(name, file, addr, count)
    return o
 end
 
-function I16Array:get_entries(map, entries)
+function I16Array:get_settable_entries(map, entries)
     for i,tag in pairs(map.values) do
 
       local count = tag.count or 1
@@ -198,7 +198,7 @@ function I16Array:get_entries(map, entries)
          value = string.format("%d", self.array[i+1].value)
       end
 
-      entries[tag.name] = SettableMetadata:new(tag.name, addr, value, tag.setter)
+      entries[tag.name] = SettableMetadata:new(tag.name, self.file, addr, value, tag.setter)
       --print(string.format("0x%08x: %-15s %-35s               %s", addr, map.name, get_label(i).." "..tag.name, value))
    end
 end
@@ -210,12 +210,12 @@ end
 IfdTable = {}
 function IfdTable:new(name, file, addr, map)
    --print(string.format("0x%x %s", addr, name))
-   local o = { entries = {} }
-   file:seek("set", addr)
-   local entries = bytes_to_int16(file:read(2):byte(1,2))
+   local o = { file=file, address=addr, entries = {} }
+   o.file:seek("set", o.address)
+   local entries = bytes_to_int16(o.file:read(2):byte(1,2))
    for i = 1,entries do
-      local offset = file:seek();
-      local bytes = file:read(12)
+      local offset = o.file:seek();
+      local bytes = o.file:read(12)
       local tag = bytes_to_int16(bytes:byte(1,2))
       local typ = bytes_to_int16(bytes:byte(3,4))
       local num = bytes_to_int32(bytes:byte(5,8))
@@ -223,21 +223,21 @@ function IfdTable:new(name, file, addr, map)
       o.entries[tag] = {tag_type=typ, count=num, value=val, address=addr}
       --print(string.format("0x%08x: %-15s %-35s %4d %8d 0x%x", offset, name, get_label(tag, map), typ, num, val))
    end
-   o.next_ifd = bytes_to_int32(file:read(4):byte(1,4))
+   o.next_ifd = bytes_to_int32(o.file:read(4):byte(1,4))
 
    setmetatable(o, self)
    self.__index = self
    return o
 end
 
-function IfdTable:LoadTable(name, file, tag, map)
+function IfdTable:LoadSubTable(name, tag, map)
    local offset = self.entries[tag].value
-   return IfdTable:new(name, file, offset, map)
+   return IfdTable:new(name, self.file, offset, map)
 end
 
-function IfdTable:LoadArray(name, file, tag, map)
+function IfdTable:LoadSubArray(name, tag, map)
    local entry = self.entries[tag];
-   return I16Array:new(name, file, entry.value, entry.count)
+   return I16Array:new(name, self.file, entry.value, entry.count)
 end
 
 
@@ -250,15 +250,14 @@ function Cr2File:new(filename)
    o.file:seek("set", 4)
    local ifd0_offset = bytes_to_int32(o.file:read(4):byte(1,4))
    o.ifd_0 = IfdTable:new("IFD0", o.file, ifd0_offset)
-   o.ifd_exif = o.ifd_0:LoadTable("Exif", o.file, 0x8769)
-   o.ifd_canon_maker_notes = o.ifd_exif:LoadTable("MakerNotes", o.file, 0x927c)
-   o.array_color_balance_4 = o.ifd_canon_maker_notes:LoadArray("ColorBalance4", o.file, 0x4001)
-   o.array_shot_info = o.ifd_canon_maker_notes:LoadArray("ShotInfo", o.file, 0x04)
+   o.ifd_exif = o.ifd_0:LoadSubTable("Exif", 0x8769)
+   o.ifd_canon_maker_notes = o.ifd_exif:LoadSubTable("MakerNotes", 0x927c)
+   o.array_color_balance_4 = o.ifd_canon_maker_notes:LoadSubArray("ColorBalance4",0x4001)
+   o.array_shot_info = o.ifd_canon_maker_notes:LoadSubArray("ShotInfo", 0x04)
 
    o.settable_metadata = {}
-   o.array_color_balance_4:get_entries(ColorBalance4, o.settable_metadata)
-   o.array_shot_info:get_entries(CanonShotInfo, o.settable_metadata)
-
+   o.array_color_balance_4:get_settable_entries(ColorBalance4, o.settable_metadata)
+   o.array_shot_info:get_settable_entries(CanonShotInfo, o.settable_metadata)
 
    setmetatable(o, self)
    self.__index = self
@@ -282,7 +281,7 @@ end
 function Cr2File:SetValue(tag,s)
    local e = self.settable_metadata[tag]
    if e then 
-      e:SetValue(self.file, s)
+      e:SetValue(s)
    else
       error("Couldn't set value")
    end
@@ -303,7 +302,7 @@ local function process_photo(filename)
    print (cr2:GetValue('ColorTempAsShot'))
 
    cr2:SetValue('WB_RGGBLevelsAsShot', '4 2 3 4')
-   cr2:SetValue('WhiteBalance', 'Cloudy')
+   cr2:SetValue('WhiteBalance', 'Shade')
    cr2:SetValue('ColorTempAsShot', '4444')
 
    print (cr2:GetValue('WhiteBalance'))
