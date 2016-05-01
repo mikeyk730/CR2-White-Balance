@@ -4,7 +4,7 @@ return {
    items = {
       {
          'com.adobe.label',
-         label = LOC "$$$/Metadata/TagsetTitle=White Balance Override"
+         label = LOC "$$$/Metadata/TagsetTitle=White Balance Status"
       },
       'com.mkaminski.metadata.fileStatus',
       'com.mkaminski.metadata.WhiteBalanceOverride',

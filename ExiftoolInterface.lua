@@ -32,14 +32,8 @@ end
 function ExiftoolInterface.saveMetadataToFile(photo, metadata, newWb)
    MetadataTools.expectValidWbSelection(newWb)
    MetadataTools.expectCachedMetadata(metadata)
-   local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
+   local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, photo.path)
    local cmd = ExiftoolInterface.exiftool .. " " .. args
-
-   local catalog = LrApplication.activeCatalog()
-   catalog:withPrivateWriteAccessDo(function(context) 
-         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'changedOnDisk')
-         photo:setPropertyForPlugin(_PLUGIN, 'WhiteBalanceOverride', newWb)
-   end, { timeout=60 })
 
    local output = ExiftoolInterface.runCmd(cmd)
    if not string.find(output, "1 image files updated") then
@@ -47,6 +41,12 @@ function ExiftoolInterface.saveMetadataToFile(photo, metadata, newWb)
       logger:trace(output)
       LrErrors.throwUserError("Save failed")
    end
+
+   local catalog = LrApplication.activeCatalog()
+   catalog:withPrivateWriteAccessDo(function(context) 
+         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'changedOnDisk')
+         photo:setPropertyForPlugin(_PLUGIN, 'WhiteBalanceOverride', newWb)
+   end, { timeout=60 })
 end
 
 

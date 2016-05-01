@@ -39,12 +39,6 @@ function ExifControllerInterface.saveMetadataToFile(photo, metadata, newWb)
    
    local cr2 = Cr2File:Create(photo.path)
 
-   local catalog = LrApplication.activeCatalog()
-   catalog:withPrivateWriteAccessDo(function(context) 
-         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'changedOnDisk')
-         photo:setPropertyForPlugin(_PLUGIN, 'WhiteBalanceOverride', newWb)
-   end, { timeout=60 })
-
    --todo:assert that we get values
    levels = cr2:GetValue("WB_RGGBLevels"..newWb)
    temp = cr2:GetValue("ColorTemp"..newWb)
@@ -54,6 +48,12 @@ function ExifControllerInterface.saveMetadataToFile(photo, metadata, newWb)
    cr2:SetValue('ColorTempAsShot', temp)
 
    cr2:Close()
+
+   local catalog = LrApplication.activeCatalog()
+   catalog:withPrivateWriteAccessDo(function(context) 
+         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'changedOnDisk')
+         photo:setPropertyForPlugin(_PLUGIN, 'WhiteBalanceOverride', newWb)
+   end, { timeout=60 })
 end
 
 
