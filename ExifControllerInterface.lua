@@ -5,7 +5,6 @@ require 'ExifController'
 
 
 local function getFileMetadataFields()
-   --todo:get programatically
    return {
       'WhiteBalance', 
       'WB_RGGBLevelsAsShot', 

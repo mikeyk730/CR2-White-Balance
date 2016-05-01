@@ -1,3 +1,4 @@
+--todo:only run if cannon 60d
 BinaryIo = {}
 
 BinaryIo.Int16ToBytes = function(x)

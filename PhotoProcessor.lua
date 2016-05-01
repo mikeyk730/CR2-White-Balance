@@ -8,7 +8,7 @@ local LrTasks = import 'LrTasks'
 local LrView = import 'LrView'
 
 require 'MetadataTools'
-require 'ExiftoolInterface'
+--require 'ExiftoolInterface'
 require 'ExifControllerInterface'
 
 --todo:can i write backup info to CR2 instead of sidecars? could reuse adj fields
@@ -134,24 +134,22 @@ end
 
 --Saves the provided white balance metadata into the catalog 
 function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
-   --LrTasks.startAsyncTask(function(context)
-         MetadataTools.expectCachedMetadata(metadata)
-         
-         if writeSidecar then
-            PhotoProcessor.saveMetadataToSidecar(photo, metadata)
+   MetadataTools.expectCachedMetadata(metadata)
+   
+   if writeSidecar then
+      PhotoProcessor.saveMetadataToSidecar(photo, metadata)
+   end
+   
+   local catalog = LrApplication.activeCatalog()
+   catalog:withPrivateWriteAccessDo(function(context) 
+         logger:trace("Have write access to catalog", photo.path)
+         metadata.fileStatus = nil
+         metadata.WhiteBalanceOverride = nil
+         for k, v in pairs(metadata) do
+            photo:setPropertyForPlugin(_PLUGIN, k, v)
          end
-         
-         local catalog = LrApplication.activeCatalog()
-         catalog:withPrivateWriteAccessDo(function(context) 
-               logger:trace("Have write access to catalog", photo.path)
-               metadata.fileStatus = nil
-               metadata.WhiteBalanceOverride = nil
-               for k, v in pairs(metadata) do
-                  photo:setPropertyForPlugin(_PLUGIN, k, v)
-               end
-               photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
-         end, { timeout=60 })
-   --end)
+         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')           
+   end, { timeout=60 })
 end
 
 
@@ -302,7 +300,7 @@ end
 
 
 function PhotoProcessor.processPhoto(photo, action, props)
-   --LrTasks.startAsyncTask(function(context)
+   LrTasks.startAsyncTask(function(context)
          local available = photo:checkPhotoAvailability()
          if available then         
 
@@ -318,8 +316,6 @@ function PhotoProcessor.processPhoto(photo, action, props)
                PhotoProcessor.runCommandChange(photo, props.newWb)
             elseif action == "load" then
                PhotoProcessor.runCommandLoad(photo)
-            elseif action == "save" then
-               PhotoProcessor.runCommandSave(photo, "Auto")
             elseif action == "revert" then
                PhotoProcessor.runCommandRevert(photo)
             elseif action == "clear" then
@@ -334,7 +330,7 @@ function PhotoProcessor.processPhoto(photo, action, props)
          else
             logger:warn("Photo not available: " .. photo.path)
          end
-   --end)
+   end)
 end
 
 
@@ -352,31 +348,45 @@ function PhotoProcessor.getSelectedPhotos()
 end
 
 
+function PhotoProcessor.getDisplayTitle(action)
+   local map = {
+      change = "Setting White Balance",
+      load = "Loading White Balance",
+      revert = "Reverting White Balance",
+      clear = "Clearing Metadata",
+      loadSidecar = "Loading WB Sidecar",
+      saveSidecar = "Saving WB Sidecar",
+   }
+   return map[action]
+end
+
+
 --Main entry point for scripts associated with menu items
 function PhotoProcessor.processPhotos(action)
+   --todo: gather stats on # success/failures
    local photos = PhotoProcessor.getSelectedPhotos()
    local totalPhotos = #photos
    logger:trace("Starting task", action, totalPhotos)
-   --todo:rework so each photo can be a task
-   LrTasks.startAsyncTask(function(context)
-         local progressScope = LrProgressScope {title=action.." "..totalPhotos.." photos"}
-         --todo:doens't work, progress hangs on error
-         --progressScope:attachToFunctionContext(context)
-         progressScope:setCancelable(true)
 
-         local props = PhotoProcessor.promptUser(action)
-
-         for i,v in ipairs(photos) do
-            if progressScope:isCanceled() then 
-               logger:trace("Canceled task", action, i)
-               break
-            end
-            progressScope:setPortionComplete(i, totalPhotos)
-            progressScope:setCaption(action.." "..i.." of "..totalPhotos)
-            PhotoProcessor.processPhoto(v, action, props)
+   LrFunctionContext.callWithContext("processPhotos", function(context) 
+      local title = PhotoProcessor.getDisplayTitle(action).." for "..totalPhotos.." Photos"
+      local progressScope = LrProgressScope {title=title}
+      progressScope:attachToFunctionContext(context)
+      progressScope:setCancelable(true)
+      
+      local props = PhotoProcessor.promptUser(action)
+      
+      for i,v in ipairs(photos) do
+         if progressScope:isCanceled() then 
+            logger:trace("Canceled task", action, i)
+            break
          end
-
-         logger:trace("Completed task", action, totalPhotos)
-         progressScope:done()
+         progressScope:setPortionComplete(i, totalPhotos)
+         progressScope:setCaption(action.." "..i.." of "..totalPhotos)
+         PhotoProcessor.processPhoto(v, action, props)
+      end
+      
+      logger:trace("Completed task", action, totalPhotos)
+      progressScope:done()
    end)
 end
