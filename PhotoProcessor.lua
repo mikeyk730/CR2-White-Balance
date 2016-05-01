@@ -17,23 +17,11 @@ require 'ExifControllerInterface'
 
 Prefs = {
    writeSidecarOnLoad = true,
-   exifInterface = ExiftoolInterface,
-   --exifInterface = ExifControllerInterface,
+   --exifInterface = ExiftoolInterface,
+   exifInterface = ExifControllerInterface,
 }
 
 PhotoProcessor = {}
-
-
-PhotoProcessor.canonWbOptions = {
-   "Auto",
-   "Daylight",
-   "Cloudy",
-   "Shade",
-   "Tungsten",
-   "Fluorescent",
-   "Flash",
-   "Measured", --todo:What is this?
-}
 
 PhotoProcessor.dialogWbOptions = {
    { value = "AsShot", title = "Revert to Shot Settings" },
@@ -44,7 +32,7 @@ PhotoProcessor.dialogWbOptions = {
    { value = "Tungsten", title = "Tungsten" },
    { value = "Fluorescent", title = "Fluorescent" },
    { value = "Flash", title = "Flash" },
-   { value = "Measured", title = "Measured" }, --todo:What is this?
+   --{ value = "Measured", title = "Measured" }, --todo:What is this?
 }
 
 

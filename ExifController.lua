@@ -73,15 +73,21 @@ end
 
 local function white_balance_from_string(file, addr, s)
    local i = Conversion.Convert(s, Conversion.WhiteBalance.FromString)
+   logger:trace("Writing WhiteBalance", i)
+
    file:seek("set", addr)
    BinaryIo.WriteInt16(file, i)
    return i
 end
 
---todo: self??
 local function levels_from_string(file, addr, s)
-   --todo: validate
-   local i1,i2,i3,i4 = string.match(s, "^(%d+) (%d+) (%d+) (%d+)$")
+   local i1,i2,i3,i4 = string.match(s, "^%s*(%d+) (%d+) (%d+) (%d+)%s*$")
+   assert(i1)
+   assert(i2)
+   assert(i3)
+   assert(i4)
+   logger:trace("Writing Levels", i1, i2, i3, i4)
+
    file:seek("set", addr)
    BinaryIo.WriteInt16Array(file, {i1, i2, i3, i4})
    return {i1,i2,i3,i4}
@@ -92,8 +98,9 @@ local function levels_to_string(a)
 end
 
 local function color_temp_from_string(file, addr, s)
-   --todo:validate
    local i = tonumber(s) or error("failed to parse "..s)
+   logger:trace("Writing Temperature", i)
+
    file:seek("set", addr)
    BinaryIo.WriteInt16(file, i)
    return i

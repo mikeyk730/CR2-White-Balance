@@ -24,7 +24,8 @@ function ExifControllerInterface.readMetadataFromFile(photo)
    t = {}
    local fields = getFileMetadataFields()
    for i, k in ipairs(fields) do
-      t[k] = cr2:GetValue(k)
+      t[k] = tostring(cr2:GetValue(k))
+      logger:trace(k,t[k],type(t[k]))
    end
 
    cr2:Close()
@@ -41,7 +42,8 @@ function ExifControllerInterface.saveMetadataToFile(photo, metadata, newWb)
 
    --todo:assert that we get values
    levels = cr2:GetValue("WB_RGGBLevels"..newWb)
-   temp = cr2:GetValue("ColorTemp"..newWb)
+   temp = tostring(cr2:GetValue("ColorTemp"..newWb))
+   logger:trace("saving", newWb, levels, temp)
 
    cr2:SetValue('WhiteBalance', newWb)
    cr2:SetValue('WB_RGGBLevelsAsShot', levels)

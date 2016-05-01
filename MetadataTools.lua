@@ -20,6 +20,18 @@ end
 
 MetadataTools = {}
 
+MetadataTools.canonWbOptions = {
+   "Auto",
+   "Daylight",
+   "Cloudy",
+   "Shade",
+   "Tungsten",
+   "Fluorescent",
+   "Flash",
+   "Measured", --todo:What is this?
+}
+
+
 function MetadataTools.getMetadataFields()
    --todo:get programatically
    return {
