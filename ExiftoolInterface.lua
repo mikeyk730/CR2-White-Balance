@@ -22,7 +22,7 @@ end
 function ExiftoolInterface.readMetadataFromFile(photo)
    logger:trace("Entering readMetadataFromFile", photo.path)
 
-   local args = '-args -WhiteBalance -WB_RGGBLevelsAsShot -WB_RGGBLevels -ColorTempAsShot "%s"'
+   local args = '-args -WhiteBalance -WB_RGGBLevelsAsShot -ColorTempAsShot "%s"'
    local cmd = string.format(ExiftoolInterface.exiftool .. " " .. args, photo.path)
    local output = ExiftoolInterface.runCmd(cmd)
    return MetadataTools.parseArgOutput(output)
@@ -32,7 +32,7 @@ end
 function ExiftoolInterface.saveMetadataToFile(photo, metadata, newWb)
    MetadataTools.expectValidWbSelection(newWb)
    MetadataTools.expectCachedMetadata(metadata)
-   local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-WB_RGGBLevels<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
+   local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
    local cmd = ExiftoolInterface.exiftool .. " " .. args
 
    local catalog = LrApplication.activeCatalog()
@@ -52,9 +52,9 @@ end
 
 function ExiftoolInterface.restoreFileMetadata(photo, metadata)
    MetadataTools.expectCachedMetadata(metadata)
-   local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-WB_RGGBLevels=%s" "-ColorTempAsShot=%s" "%s"',
+   local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-ColorTempAsShot=%s" "%s"',
                               metadata.WhiteBalance, metadata.WB_RGGBLevelsAsShot, 
-                              metadata.WB_RGGBLevels, metadata.ColorTempAsShot, 
+                              metadata.ColorTempAsShot, 
                               photo.path)
    local cmd = ExiftoolInterface.exiftool .. " " .. args
 

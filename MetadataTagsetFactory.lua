@@ -13,7 +13,6 @@ return {
          label = LOC "$$$/Metadata/TagsetTitle=Cached Metadata"
       },
       'com.mkaminski.metadata.WhiteBalance',
-      'com.mkaminski.metadata.WB_RGGBLevels',
       'com.mkaminski.metadata.WB_RGGBLevelsAsShot',
       'com.mkaminski.metadata.ColorTempAsShot',
    }

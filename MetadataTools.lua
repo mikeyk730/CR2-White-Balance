@@ -25,7 +25,6 @@ function MetadataTools.getMetadataFields()
    return {
       'fileStatus', 
       'WhiteBalance', 
-      'WB_RGGBLevels', 
       'WB_RGGBLevelsAsShot', 
       'ColorTempAsShot',
       'WhiteBalanceOverride',
@@ -38,7 +37,6 @@ function MetadataTools.getMetadataSet()
    return {
       fileStatus = true,
       WhiteBalance = true,
-      WB_RGGBLevels = true,
       WB_RGGBLevelsAsShot = true,
       ColorTempAsShot = true,
       WhiteBalanceOverride = true,
@@ -50,7 +48,6 @@ function MetadataTools.expectCachedMetadata(metadata)
    assert(metadata)
    assert(metadata.WhiteBalance)
    assert(metadata.WB_RGGBLevelsAsShot)
-   assert(metadata.WB_RGGBLevels)
    assert(metadata.ColorTempAsShot)
 end
 
