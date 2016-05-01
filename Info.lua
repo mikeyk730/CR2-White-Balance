@@ -46,11 +46,5 @@ return {
       --   file = "MenuItemLoadSidecar.lua",
       --   enabledWhen = "photosSelected",
       --},
-      --{
-      --   title = "Create &Snapshot",
-      --   file = "MenuItemCreateSnapshot.lua",
-      --   enabledWhen = "photosSelected",
-      --},
-
    },
 }

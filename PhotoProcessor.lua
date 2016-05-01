@@ -69,34 +69,6 @@ function PhotoProcessor.promptForWhiteBalance(selectedOption)
    return selectedOption
 end
 
-function PhotoProcessor.promptForSnapshotName()
-   local r = "Untitled"
-   LrFunctionContext.callWithContext("promptForSnapshotName", function(context)
-      local props = LrBinding.makePropertyTable(context)
-      props.name = r
-
-      local f = LrView.osFactory()
-      local c = f:row {
-         bind_to_object = props,
-         f:edit_field {
-            value = LrView.bind("name")
-         },
-      }
-
-      local result = LrDialogs.presentModalDialog({
-            title = "Enter Name For Snapshot",
-            contents = c
-      })
-      
-      if result == "ok" then
-         r = props.name
-      else
-         r = nil
-      end
-   end)
-   return r
-end
-
 
 function PhotoProcessor.getSidecarFilename(photo)
    return photo.path .. ".wb"
@@ -217,25 +189,6 @@ function PhotoProcessor.runCommandChange(photo, newWb)
    end
 end
 
---Create a develop snapshot fro the supplied photo.  If no name is supplied
---the user will be prompted with a dialog
---todo:move to standalone plugin
-function PhotoProcessor.runCommandCreateSnapshot(photo, name)
-   logger:trace("Entering runCommandCreateSnapshot", photo.path)
-   
-   --todo:
-   if name == nil then
-      logger:trace("Snapshot canceled", photo.path)
-      return
-   end
-
-   logger:trace("Creating snapshot", name, photo.path)
-   local catalog = LrApplication.activeCatalog()
-   catalog:withWriteAccessDo("Create Snapshot", function(context) 
-         photo:createDevelopSnapshot(name, true)
-   end, { timeout=60 })
-end
-
 
 --Save metadata from the catalog into a sidecar file
 function PhotoProcessor.runCommandSaveSidecar(photo)
@@ -342,8 +295,6 @@ function PhotoProcessor.promptUser(action)
 
    if action == "change" then
       props.newWb = PhotoProcessor.promptForWhiteBalance()
-   elseif action == "createSnapshot" then
-      props.name = PhotoProcessor.promptForSnapshotName()
    end
 
    return props
@@ -377,8 +328,6 @@ function PhotoProcessor.processPhoto(photo, action, props)
                PhotoProcessor.runCommandLoadSidecar(photo)
             elseif action == "saveSidecar" then
                PhotoProcessor.runCommandSaveSidecar(photo)
-            elseif action == "createSnapshot" then
-               PhotoProcessor.runCommandCreateSnapshot(photo, props.name)
             else
                logger:error("Unknown action: " .. action)
             end
