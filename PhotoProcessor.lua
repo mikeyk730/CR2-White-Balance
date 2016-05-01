@@ -1,41 +1,28 @@
 local LrApplication = import 'LrApplication'
 local LrBinding = import 'LrBinding'
 local LrDialogs = import 'LrDialogs'
-local LrErrors = import 'LrErrors'
 local LrFileUtils = import 'LrFileUtils'
 local LrFunctionContext = import 'LrFunctionContext'
-local LrLogger = import 'LrLogger'
 local LrProgressScope = import 'LrProgressScope'
-local LrStringUtils = import 'LrStringUtils'
 local LrTasks = import 'LrTasks'
 local LrView = import 'LrView'
 
+require 'MetadataTools'
+require 'ExiftoolInterface'
+require 'ExifControllerInterface'
+
 --todo:can i write backup info to CR2 instead of sidecars? could reuse adj fields
 --todo: make sure catalog metadata never gets overwritten
-
-local logger = LrLogger('CorrectWhiteBalance')
-logger:enable("logfile")
-
---Split the input string on the provided separator
-function split(inputstr, sep)
-   if sep == nil then
-      sep = "%s"
-   end
-   local t={};
-   for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
-      table.insert(t,str)
-   end
-   return t
-end
+--todo:write sidecar info into xmp
 
 Prefs = {
-   writeSidecarOnLoad = true
+   writeSidecarOnLoad = true,
+   exifInterface = ExiftoolInterface,
+   --exifInterface = ExifControllerInterface,
 }
 
 PhotoProcessor = {}
 
---todo:test with missing exe
-PhotoProcessor.exiftool = 'exiftool.exe'
 
 PhotoProcessor.canonWbOptions = {
    "Auto",
@@ -59,80 +46,6 @@ PhotoProcessor.dialogWbOptions = {
    { value = "Flash", title = "Flash" },
    { value = "Measured", title = "Measured" }, --todo:What is this?
 }
-
-
-function PhotoProcessor.getMetadataFields()
-   --todo:get programatically
-   return {
-      'fileStatus', 
-      'WhiteBalance', 
-      'WB_RGGBLevels', 
-      'WB_RGGBLevelsAsShot', 
-      'ColorTempAsShot',
-      'WhiteBalanceOverride',
-   }
-end
-
-
-function PhotoProcessor.getMetadataSet()
-   --todo:get programatically
-   return {
-      fileStatus = true,
-      WhiteBalance = true,
-      WB_RGGBLevels = true,
-      WB_RGGBLevelsAsShot = true,
-      ColorTempAsShot = true,
-      WhiteBalanceOverride = true,
-   }
-end
-
-
-function PhotoProcessor.expectCachedMetadata(metadata)
-   assert(metadata.WhiteBalance)
-   assert(metadata.WB_RGGBLevelsAsShot)
-   assert(metadata.WB_RGGBLevels)
-   assert(metadata.ColorTempAsShot)
-end
-
-
-function PhotoProcessor.expectValidWbSelection(wb)
-   --todo:verify that wb is in canonWbOptions
-end
-
-
---Shell execute the provided command.  Return the output of the command
-function PhotoProcessor.runCmd(cmd)
-   logger:trace("Running command ", '"'..cmd..'"')
-
-   local f = assert(io.popen(cmd, 'r'))
-   local s = assert(f:read('*a'))
-   --todo:check exit code, handle errors
-   f:close()
-   return s
-end
-
-
-function PhotoProcessor.parseArgOutput(output)
-   local metadataSet = PhotoProcessor.getMetadataSet()
-   local t = {}
-
-   local lines = split(output, '\n')
-   for i, line in pairs(lines) do
-      k, v = string.match(line, '-([%w_]+)=(.+)')
-      if k and v then
-         k = LrStringUtils.trimWhitespace(k)
-         v = LrStringUtils.trimWhitespace(v)
-         --logger:trace("parseArgOutput",k,v)
-         if metadataSet[k] then
-            t[k]=v
-         else
-            logger:warn("dropping key", k)
-         end
-      end
-   end
-   
-   return t
-end
 
 
 function PhotoProcessor.promptForWhiteBalance(selectedOption)
@@ -213,13 +126,13 @@ function PhotoProcessor.readMetadataFromSidecar(photo)
      
    local content = LrFileUtils.readFile(sidecar)
    logger:trace("sidecar content",content)
-   return PhotoProcessor.parseArgOutput(content)
+   return MetadataTools.parseArgOutput(content)
 end
 
 
 --Writes the supplied metadata to a sidecar file.
 function PhotoProcessor.saveMetadataToSidecar(photo, metadata)
-   PhotoProcessor.expectCachedMetadata(metadata)
+   MetadataTools.expectCachedMetadata(metadata)
 
    local sidecar = PhotoProcessor.getSidecarFilename(photo)
    logger:trace("Writing metadata to sidecar", sidecar)
@@ -236,7 +149,7 @@ end
 
 function PhotoProcessor.loadMetadataFromCatalog(photo)
    local metadata = {}
-   local keys = PhotoProcessor.getMetadataFields()
+   local keys = MetadataTools.getMetadataFields()
    for i, k in ipairs(keys) do
       local v = photo:getPropertyForPlugin(_PLUGIN, k)
       if v then
@@ -251,7 +164,7 @@ function PhotoProcessor.clearMetadataFromCatalog(photo)
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
          logger:trace("Clearing metadata", photo.path)
-         local keys = PhotoProcessor.getMetadataFields()
+         local keys = MetadataTools.getMetadataFields()
          for i, k in ipairs(keys) do            
             photo:setPropertyForPlugin(_PLUGIN, k, nil)
          end
@@ -262,7 +175,7 @@ end
 --Saves the provided white balance metadata into the catalog 
 function PhotoProcessor.saveMetadataToCatalog(photo, metadata, writeSidecar)
    --LrTasks.startAsyncTask(function(context)
-         PhotoProcessor.expectCachedMetadata(metadata)
+         MetadataTools.expectCachedMetadata(metadata)
          
          if writeSidecar then
             PhotoProcessor.saveMetadataToSidecar(photo, metadata)
@@ -284,56 +197,17 @@ end
 
 --Reads white balance metadata from the provided file.  Returns a table of the values
 function PhotoProcessor.readMetadataFromFile(photo)
-   logger:trace("Entering readMetadataFromFile", photo.path)
-
-   local args = '-args -WhiteBalance -WB_RGGBLevelsAsShot -WB_RGGBLevels -ColorTempAsShot "%s"'
-   local cmd = string.format(PhotoProcessor.exiftool .. " " .. args, photo.path)
-   local output = PhotoProcessor.runCmd(cmd)
-   return PhotoProcessor.parseArgOutput(output)
+   return Prefs.exifInterface.readMetadataFromFile(photo)
 end
 
 
 function PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
-   PhotoProcessor.expectValidWbSelection(newWb)
-   PhotoProcessor.expectCachedMetadata(metadata)
-   local args = string.format('-tagsfromfile "%s" "-WhiteBalance=%s" "-WB_RGGBLevelsAsShot<WB_RGGBLevels%s" "-WB_RGGBLevels<WB_RGGBLevels%s" "-ColorTempAsShot<ColorTemp%s" "%s"', photo.path, newWb, newWb, newWb, newWb, photo.path)
-   local cmd = PhotoProcessor.exiftool .. " " .. args
-
-   local catalog = LrApplication.activeCatalog()
-   catalog:withPrivateWriteAccessDo(function(context) 
-         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'changedOnDisk')
-         photo:setPropertyForPlugin(_PLUGIN, 'WhiteBalanceOverride', newWb)
-   end, { timeout=60 })
-
-   local output = PhotoProcessor.runCmd(cmd)
-   if not string.find(output, "1 image files updated") then
-      logger:error("Save failed.  File may be locked by another process")
-      logger:trace(output)
-      LrErrors.throwUserError("Save failed")
-   end
+   return Prefs.exifInterface.saveMetadataToFile(photo, metadata, newWb)
 end
 
 
 function PhotoProcessor.restoreFileMetadata(photo, metadata)
-   PhotoProcessor.expectCachedMetadata(metadata)
-   local args = string.format('"-WhiteBalance=%s" "-WB_RGGBLevelsAsShot=%s" "-WB_RGGBLevels=%s" "-ColorTempAsShot=%s" "%s"',
-                              metadata.WhiteBalance, metadata.WB_RGGBLevelsAsShot, 
-                              metadata.WB_RGGBLevels, metadata.ColorTempAsShot, 
-                              photo.path)
-   local cmd = PhotoProcessor.exiftool .. " " .. args
-
-   local output = PhotoProcessor.runCmd(cmd)
-   if not string.find(output, "1 image files updated") then
-      logger:error("Revert failed")
-      logger:trace(output)
-      LrErrors.throwUserError("Revert failed.  File may be locked by another process")
-   end
-
-   local catalog = LrApplication.activeCatalog()
-   catalog:withPrivateWriteAccessDo(function(context) 
-         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')
-         photo:setPropertyForPlugin(_PLUGIN, 'WhiteBalanceOverride', nil)     
-   end, { timeout=60 })
+   return Prefs.exifInterface.restoreFileMetadata(photo, metadata)
 end
 
 
@@ -425,8 +299,8 @@ function PhotoProcessor.runCommandLoad(photo)
 end
 
 
---Set new white balance metadata into the image.  The implementation uses 
---exiftool to modify image metadata, which means this is a destructive operation
+--Set new white balance metadata into the image.  This function overwrites 
+--the .CR2 metadata, which means this is a destructive operation
 function PhotoProcessor.runCommandSave(photo, newWb)
    logger:trace("Entering runCommandSave", photo.path)
 
@@ -436,17 +310,15 @@ function PhotoProcessor.runCommandSave(photo, newWb)
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
    if metadata.fileStatus ~= 'loadedMetadata' and metadata.fileStatus ~= 'changedOnDisk' then
       logger:trace("Can't save file", metadata.fileStatus, photo.path)
-      return
+   else
+      logger:trace("Saving metadata to file", photo.path)
+      PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
    end
-
-   logger:trace("Saving metadata to file", photo.path)
-   PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
 end
 
 
---Restores the original white balance to the image.  The implementation uses 
---exiftool to overwrite image metadata with metadata stored in the catalog.
---This is a destructive operation
+--Restores the original white balance to the image.  This function overwrites
+--the .CR2 metadata, which means this is a destructive operation
 function PhotoProcessor.runCommandRevert(photo)
    logger:trace("Entering runCommandRevert", photo.path)
 
@@ -454,11 +326,10 @@ function PhotoProcessor.runCommandRevert(photo)
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
    if metadata.fileStatus ~= 'changedOnDisk' then
       logger:trace("Can't revert file", metadata.fileStatus, photo.path)
-      return
+   else
+      logger:trace("Reverting file", photo.path)
+      PhotoProcessor.restoreFileMetadata(photo, metadata)
    end
-
-   logger:trace("Reverting file", photo.path)
-   PhotoProcessor.restoreFileMetadata(photo, metadata)
 end
 
 
@@ -471,10 +342,10 @@ function PhotoProcessor.runCommandClear(photo)
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
    if status ~= 'loadedMetadata' and status ~= 'shotInAuto' then
       logger:trace("Can't clear metadata", status, photo.path)
+   else
+      logger:trace("Clearing metadata", photo.path)
+      PhotoProcessor.clearMetadataFromCatalog(photo)
    end
-
-   logger:trace("Clearing metadata", photo.path)
-   PhotoProcessor.clearMetadataFromCatalog(photo)
 end
 
 

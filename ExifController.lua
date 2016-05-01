@@ -1,24 +1,3 @@
-require "constants"
-
-local P = {}
-complex = P
-
-local io = io
-local setmetatable = setmetatable
-local table = table
-local string = string
-local pairs = pairs
-local print = print
-local tonumber = tonumber
-local error = error
-local assert = assert
-local ipairs = ipairs
-
-setfenv(1, P)
-
-
-
-
 BinaryIo = {}
 
 BinaryIo.Int16ToBytes = function(x)
@@ -317,34 +296,3 @@ end
 function Cr2File:Close()
    self.file:close()
 end
-
-
-
-
-local function process_photo(filename)
-
-   local cr2 = Cr2File:Create(filename)
-
-   cr2:PrintEntries()
-
-   print (cr2:GetValue('WB_RGGBLevelsAuto'))
-   print (cr2:GetValue('ColorTempAuto'))
-
-   cr2:SetValue('WB_RGGBLevelsAsShot', '1 2 3 4')
-   cr2:SetValue('WhiteBalance', 'Shade')
-   cr2:SetValue('ColorTempAsShot', '3443')
-
-   print (cr2:GetValue('WhiteBalance'))
-   print (cr2:GetValue('WB_RGGBLevelsAsShot'))
-   print (cr2:GetValue('ColorTempAsShot'))
-
-   cr2:Close()
-end
-
-
-
-
-
---local filename = '20140715-IMG_6900o.CR2'
-local filename = 'IMG_4576.CR2'
-process_photo(filename)
