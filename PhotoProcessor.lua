@@ -8,6 +8,7 @@ local LrProgressScope = import 'LrProgressScope'
 local LrTasks = import 'LrTasks'
 local LrView = import 'LrView'
 
+
 require 'MetadataTools'
 --require 'ExiftoolInterface'
 require 'ExifControllerInterface'
@@ -81,7 +82,7 @@ function PhotoProcessor.readMetadataFromSidecar(photo)
 
    if not LrFileUtils.exists(sidecar) then
       logger:trace("Sidecar doesn't exisit", sidecar)
-      return
+      return nil
    end
      
    local content = LrFileUtils.readFile(sidecar)
@@ -213,6 +214,9 @@ function PhotoProcessor.runCommandLoadSidecar(photo)
    else
       logger:trace("Loading metadata from sidecar", photo.path)
       local metadata = PhotoProcessor.readMetadataFromSidecar(photo)
+      if metadata == nil then
+         return false
+      end
       PhotoProcessor.saveMetadataToCatalog(photo, metadata, false)
       return true
    end
@@ -317,45 +321,87 @@ function PhotoProcessor.promptUser(action)
 end
 
 
-function PhotoProcessor.processPhoto(photo, action, args)
+function PhotoProcessor.updateProgress(progress, status)
+   progress.complete = progress.complete + 1
+   progress.scope:setPortionComplete(progress.complete, progress.total)
+   progress.scope:setCaption(progress.complete.." of "..progress.total)
+
+   progress.stats[status] = progress.stats[status] + 1
+
+   if progress.complete == progress.total then
+      local success = string.format("%d of %d completed successfully", progress.stats.success, progress.total)
+      local failure = string.format("%d failures, %d bad format, %d unavailable", progress.stats.failure, progress.stats.bad_type, progress.stats.unavailable)
+
+      logger:trace("----------------------------------")
+      logger:trace(success)
+      logger:trace(failure)
+      logger:trace("----------------------------------")
+
+      LrDialogs.message(progress.title, success.."\n"..failure)
+   end
+end
+
+
+function PhotoProcessor.processPhoto(photo, action, args, progress)
+   local status, err = LrTasks.pcall(function () 
+         if progress.scope:isCanceled() then 
+            logger:trace("Canceled task", progress.title, progress.complete)
+            return
+         end
+         
+         --Skip files that aren't mounted
+         local available = photo:checkPhotoAvailability()
+         if not available then         
+            logger:warn("Photo not available: " .. photo.path)
+            PhotoProcessor.updateProgress(progress, 'unavailable')
+            return
+         end
+         
+         --Skip files that are not Canon Raw files
+         local ft = photo:getFormattedMetadata('fileType')
+         local make = photo:getFormattedMetadata('cameraMake')
+         if ft ~= 'Raw' or make ~= 'Canon' then
+            logger:info("Skipping unsupported file", make, ft, photo.path)
+            PhotoProcessor.updateProgress(progress, 'bad_type')
+            return
+         end
+         
+         local handler = PhotoProcessor.getActionAttr(action, 'handler')
+         if handler(photo, args) then
+            PhotoProcessor.updateProgress(progress, 'success')
+         else 
+            PhotoProcessor.updateProgress(progress, 'failure')
+         end
+   end)
+   if not status then
+      logger:error(err)
+      --LrDialogs.message("Error with "..photo.path, err)
+      PhotoProcessor.updateProgress(progress, 'failure')
+   end
+end
+
+
+function PhotoProcessor.processPhotosWithOneTask(action, photos, progress)
    LrTasks.startAsyncTask(function(context)
-      --Skip files that aren't mounted
-      local available = photo:checkPhotoAvailability()
-      if not available then         
-         logger:warn("Photo not available: " .. photo.path)
-         args.stats.unavailable = args.stats.unavailable + 1
-         return
+      local args = PhotoProcessor.promptUser(action)
+      for i,photo in ipairs(photos) do
+         PhotoProcessor.processPhoto(photo, action, args, progress)
       end
-      
-      --Skip files that are not Canon Raw files
-      local ft = photo:getFormattedMetadata('fileType')
-      local make = photo:getFormattedMetadata('cameraMake')
-      if ft ~= 'Raw' or make ~= 'Canon' then
-         logger:info("Skipping unsupported file", make, ft, photo.path)
-         args.stats.bad_type = args.stats.bad_type + 1
-         return
-      end
-      
-      local handler = PhotoProcessor.getActionAttr(action, 'handler')
-
-      --todo:
-      --if LrTasks.pcall(function () handler(photo, args) end) then
-      if handler(photo, args) then
-         args.stats.success = args.stats.success + 1   
-      else 
-         args.stats.failure = args.stats.failure + 1
-      end
-
-      logger:trace("----------------------------------")
-      logger:trace(string.format("%d completed successfully", args.stats.success))
-      logger:trace(string.format("%d failures %d bad format %d unavailable", args.stats.failure, args.stats.bad_type, args.stats.unavailable))
-      logger:trace("----------------------------------")
-      
    end)
 end
 
 
---Returns a table of the files that are currently selected in Lightroom
+function PhotoProcessor.processPhotosWithManyTasks(action, photos, progress)
+   local args = PhotoProcessor.promptUser(action)
+   for i,photo in ipairs(photos) do
+      LrTasks.startAsyncTask(function(context)
+            PhotoProcessor.processPhotoAsync(photo, action, args, progress)
+      end)
+   end
+end
+
+
+--Returns an array of the files that are currently selected in Lightroom
 function PhotoProcessor.getSelectedPhotos()
    local catalog = LrApplication.activeCatalog()
    local photo = catalog:getTargetPhoto()
@@ -371,33 +417,23 @@ end
 
 --Main entry point for scripts associated with menu items
 function PhotoProcessor.processPhotos(action)
-   local photos = PhotoProcessor.getSelectedPhotos()
-   local totalPhotos = #photos
-   logger:trace("----------------------------------")
-   logger:trace("Starting task", action, totalPhotos)
-
    LrFunctionContext.callWithContext("processPhotos", function(context) 
+      local photos = PhotoProcessor.getSelectedPhotos()
+      local total_photos = #photos
       local title = PhotoProcessor.getActionAttr(action, 'title')
-      local progressScope = LrProgressScope {title=title.." for "..totalPhotos.." Photos"}
+      local display_title = title.." for "..total_photos.." Photos"
+
+      logger:trace("==================")
+      logger:trace(display_title)
+      logger:trace("==================")
+
+      local progressScope = LrProgressScope {title=display_title}
       progressScope:attachToFunctionContext(context)
       progressScope:setCancelable(true)
 
-      local args = PhotoProcessor.promptUser(action)
-      args.stats = { unavailable=0, bad_type=0, success=0, failure=0 }      
+      local progress = {scope = progressScope, title = title,  complete = 0, total = total_photos}
+      progress.stats = { unavailable=0, bad_type=0, success=0, failure=0 }      
 
-      for i,photo in ipairs(photos) do
-         if progressScope:isCanceled() then 
-            logger:trace("Canceled task", action, i)
-            break
-         end
-         progressScope:setPortionComplete(i, totalPhotos)
-         progressScope:setCaption(action.." "..i.." of "..totalPhotos)
-
-         PhotoProcessor.processPhoto(photo, action, args)
-      end
-      
-      --todo: status bar broken since everything is async
-      logger:trace("Completed task", action, totalPhotos)
-      progressScope:done()
+      PhotoProcessor.processPhotosWithOneTask(action, photos, progress)
    end)
 end

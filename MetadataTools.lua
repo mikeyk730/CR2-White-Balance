@@ -1,9 +1,8 @@
 local LrStringUtils = import 'LrStringUtils'
 local LrLogger = import 'LrLogger'
 
-logger = LrLogger('CorrectWhiteBalance')
+logger = LrLogger('CR2-White-Balance')
 logger:enable("logfile")
-
 
 --Split the input string on the provided separator
 local function split(inputstr, sep)
@@ -75,7 +74,7 @@ end
 
 
 function MetadataTools.parseArgOutput(output)
-   logger:warn("parseArgOutput", output)
+   --logger:trace("parseArgOutput", output)
    local metadataSet = MetadataTools.getMetadataSet()
    local t = {}
 
