@@ -337,12 +337,15 @@ function PhotoProcessor.updateProgress(progress, status)
       logger:trace(failure)
       logger:trace("----------------------------------")
 
+      progress.scope:done()
       LrDialogs.message(progress.title, success.."\n"..failure)
    end
 end
 
 
 function PhotoProcessor.processPhoto(photo, action, args, progress)
+   --Use pcall so errors with a single photo can be captured, and not interrupt
+   --the whole operation
    local status, err = LrTasks.pcall(function () 
          --Skip files that aren't mounted
          local available = photo:checkPhotoAvailability()
@@ -377,15 +380,20 @@ end
 
 
 function PhotoProcessor.processPhotosWithOneTask(action, photos, progress)
-   LrTasks.startAsyncTask(function(context)
-      local args = PhotoProcessor.promptUser(action)
-      for i,photo in ipairs(photos) do
-         if progress.scope:isCanceled() then 
-            logger:trace("Canceled task", progress.title, progress.complete)
-            break
+   LrTasks.startAsyncTask(function(c)
+      LrFunctionContext.callWithContext("processPhotos", function(context) 
+
+         progress.scope:attachToFunctionContext(context)
+         local args = PhotoProcessor.promptUser(action)
+         for i,photo in ipairs(photos) do
+            if progress.scope:isCanceled() then 
+               logger:trace("Canceled task", progress.title, progress.complete)
+               break
+            end
+            PhotoProcessor.processPhoto(photo, action, args, progress)
          end
-         PhotoProcessor.processPhoto(photo, action, args, progress)
-      end
+
+      end)
    end)
 end
 
@@ -418,23 +426,30 @@ end
 
 --Main entry point for scripts associated with menu items
 function PhotoProcessor.processPhotos(action)
-   LrFunctionContext.callWithContext("processPhotos", function(context) 
-      local photos = PhotoProcessor.getSelectedPhotos()
-      local total_photos = #photos
-      local title = PhotoProcessor.getActionAttr(action, 'title')
-      local display_title = title.." for "..total_photos.." Photos"
+   local photos = PhotoProcessor.getSelectedPhotos()
+   local total_photos = #photos
 
-      logger:trace("==================")
-      logger:trace(display_title)
-      logger:trace("==================")
+   local title = PhotoProcessor.getActionAttr(action, 'title')
+   local display_title = title.." for "..total_photos.." Photos"
 
-      local progressScope = LrProgressScope {title=display_title}
-      progressScope:attachToFunctionContext(context)
-      progressScope:setCancelable(true)
+   logger:trace("==================")
+   logger:trace(display_title)
+   logger:trace("==================")
 
-      local progress = {scope = progressScope, title = title,  complete = 0, total = total_photos}
-      progress.stats = { unavailable=0, bad_type=0, success=0, failure=0 }      
+   local progressScope = LrProgressScope {title=display_title}
+   progressScope:setCancelable(true)
+   local progress = {
+      scope = progressScope, 
+      title = title,  
+      complete = 0, 
+      total = total_photos,
+      stats = { 
+         unavailable = 0, 
+         bad_type = 0, 
+         success = 0, 
+         failure = 0,
+      }
+   }
 
-      PhotoProcessor.processPhotosWithOneTask(action, photos, progress)
-   end)
+   PhotoProcessor.processPhotosWithOneTask(action, photos, progress)
 end
