@@ -1,6 +1,7 @@
 local LrApplication = import 'LrApplication'
 local LrBinding = import 'LrBinding'
 local LrDialogs = import 'LrDialogs'
+local LrErrors = import 'LrErrors'
 local LrFileUtils = import 'LrFileUtils'
 local LrFunctionContext = import 'LrFunctionContext'
 local LrProgressScope = import 'LrProgressScope'
@@ -11,6 +12,7 @@ require 'MetadataTools'
 --require 'ExiftoolInterface'
 require 'ExifControllerInterface'
 
+--todo: code review error handling
 --todo: make sure catalog metadata never gets overwritten
 
 Prefs = {
@@ -30,7 +32,6 @@ PhotoProcessor.dialogWbOptions = {
    { value = "Tungsten", title = "Tungsten" },
    { value = "Fluorescent", title = "Fluorescent" },
    { value = "Flash", title = "Flash" },
-   --{ value = "Measured", title = "Measured" }, --todo:What is this?
 }
 
 
@@ -60,7 +61,8 @@ function PhotoProcessor.promptForWhiteBalance(selectedOption)
       if result == "ok" then
          selectedOption = props.option
       else 
-         selectedOption = nil
+         logger:trace("User canceled dialog")
+         LrErrors.throwCanceled()
       end
    end)
 
@@ -167,21 +169,17 @@ function PhotoProcessor.restoreFileMetadata(photo, metadata)
 end
 
 
-function PhotoProcessor.runCommandChange(photo, newWb)
+function PhotoProcessor.runCommandChange(photo, props)
    logger:trace("Entering runCommandChange", photo.path)
-   
-   --todo: check earlier
-   if newWb == nil then
-      logger:trace("Change canceled", photo.path)
-      return
-   end
+   local newWb = props.newWb
+   assert(newWb)
 
    logger:trace("Changing white balance", newWb, photo.path)
    PhotoProcessor.runCommandLoad(photo)
    if newWb == "AsShot" then
-      PhotoProcessor.runCommandRevert(photo)
+      return PhotoProcessor.runCommandRevert(photo)
    else
-      PhotoProcessor.runCommandSave(photo, newWb)
+      return PhotoProcessor.runCommandSave(photo, newWb)
    end
 end
 
@@ -194,11 +192,12 @@ function PhotoProcessor.runCommandSaveSidecar(photo)
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
    if metadata.fileStatus ~= 'loadedMetadata' and metadata.fileStatus ~= 'changedOnDisk' then
       logger:trace("Can't save sidecar", metadata.fileStatus, photo.path)
-      return
+      return false
+   else
+      logger:trace("Saving metadata to sidecar", photo.path)
+      PhotoProcessor.saveMetadataToSidecar(photo, metadata)
+      return true
    end
-
-   logger:trace("Saving metadata to sidecar", photo.path)
-   PhotoProcessor.saveMetadataToSidecar(photo, metadata)
 end
 
 
@@ -210,12 +209,13 @@ function PhotoProcessor.runCommandLoadSidecar(photo)
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
    if status ~= nil then
       logger:trace("Skipped loading sidecar", status, photo.path)
-      return
+      return false
+   else
+      logger:trace("Loading metadata from sidecar", photo.path)
+      local metadata = PhotoProcessor.readMetadataFromSidecar(photo)
+      PhotoProcessor.saveMetadataToCatalog(photo, metadata, false)
+      return true
    end
-
-   logger:trace("Loading metadata from sidecar", photo.path)
-   local metadata = PhotoProcessor.readMetadataFromSidecar(photo)
-   PhotoProcessor.saveMetadataToCatalog(photo, metadata, false)
 end
 
 
@@ -227,12 +227,13 @@ function PhotoProcessor.runCommandLoad(photo)
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
    if status ~= nil then
       logger:trace("Skipped loading", status, photo.path)
-      return
+      return false
+   else
+      logger:trace("Loading metadata from file", photo.path)
+      local metadata = PhotoProcessor.readMetadataFromFile(photo)
+      PhotoProcessor.saveMetadataToCatalog(photo, metadata, Prefs.writeSidecarOnLoad)
+      return true
    end
-
-   logger:trace("Loading metadata from file", photo.path)
-   local metadata = PhotoProcessor.readMetadataFromFile(photo)
-   PhotoProcessor.saveMetadataToCatalog(photo, metadata, Prefs.writeSidecarOnLoad)
 end
 
 
@@ -247,9 +248,11 @@ function PhotoProcessor.runCommandSave(photo, newWb)
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
    if metadata.fileStatus ~= 'loadedMetadata' and metadata.fileStatus ~= 'changedOnDisk' then
       logger:trace("Can't save file", metadata.fileStatus, photo.path)
+      return false
    else
       logger:trace("Saving metadata to file", photo.path)
       PhotoProcessor.saveMetadataToFile(photo, metadata, newWb)
+      return true
    end
 end
 
@@ -263,9 +266,11 @@ function PhotoProcessor.runCommandRevert(photo)
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
    if metadata.fileStatus ~= 'changedOnDisk' then
       logger:trace("Can't revert file", metadata.fileStatus, photo.path)
+      return false
    else
       logger:trace("Reverting file", photo.path)
       PhotoProcessor.restoreFileMetadata(photo, metadata)
+      return true
    end
 end
 
@@ -279,10 +284,25 @@ function PhotoProcessor.runCommandClear(photo)
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
    if status ~= 'loadedMetadata' and status ~= 'shotInAuto' then
       logger:trace("Can't clear metadata", status, photo.path)
+      return false
    else
       logger:trace("Clearing metadata", photo.path)
       PhotoProcessor.clearMetadataFromCatalog(photo)
+      return true
    end
+end
+
+
+function PhotoProcessor.getActionAttr(action, attr)
+   local map = {
+      change =      { title = "Setting White Balance",   handler = PhotoProcessor.runCommandChange },
+      load =        { title = "Loading White Balance",   handler = PhotoProcessor.runCommandLoad },
+      revert =      { title = "Reverting White Balance", handler = PhotoProcessor.runCommandRevert },
+      clear =       { title = "Clearing Metadata",       handler = PhotoProcessor.runCommandClear },
+      loadSidecar = { title = "Loading WB Sidecar",      handler = PhotoProcessor.runCommandLoadSidecar },
+      saveSidecar = { title = "Saving WB Sidecar",       handler = PhotoProcessor.runCommandSaveSidecar },
+   }
+   return map[action][attr]
 end
 
 
@@ -297,37 +317,40 @@ function PhotoProcessor.promptUser(action)
 end
 
 
-function PhotoProcessor.processPhoto(photo, action, props)
+function PhotoProcessor.processPhoto(photo, action, args)
    LrTasks.startAsyncTask(function(context)
-         local available = photo:checkPhotoAvailability()
-         if available then         
+      --Skip files that aren't mounted
+      local available = photo:checkPhotoAvailability()
+      if not available then         
+         logger:warn("Photo not available: " .. photo.path)
+         args.stats.unavailable = args.stats.unavailable + 1
+         return
+      end
+      
+      --Skip files that are not Canon Raw files
+      local ft = photo:getFormattedMetadata('fileType')
+      local make = photo:getFormattedMetadata('cameraMake')
+      if ft ~= 'Raw' or make ~= 'Canon' then
+         logger:info("Skipping unsupported file", make, ft, photo.path)
+         args.stats.bad_type = args.stats.bad_type + 1
+         return
+      end
+      
+      local handler = PhotoProcessor.getActionAttr(action, 'handler')
 
-            --Skip files that are not Canon Raw files
-            local ft = photo:getFormattedMetadata('fileType')
-            local make = photo:getFormattedMetadata('cameraMake')
-            if ft ~= 'Raw' or make ~= 'Canon' then
-               logger:trace("Skipping unsupported file", make, ft, photo.path)
-               return
-            end
+      --todo:
+      --if LrTasks.pcall(function () handler(photo, args) end) then
+      if handler(photo, args) then
+         args.stats.success = args.stats.success + 1   
+      else 
+         args.stats.failure = args.stats.failure + 1
+      end
 
-            if action == "change" then
-               PhotoProcessor.runCommandChange(photo, props.newWb)
-            elseif action == "load" then
-               PhotoProcessor.runCommandLoad(photo)
-            elseif action == "revert" then
-               PhotoProcessor.runCommandRevert(photo)
-            elseif action == "clear" then
-               PhotoProcessor.runCommandClear(photo)
-            elseif action == "loadSidecar" then
-               PhotoProcessor.runCommandLoadSidecar(photo)
-            elseif action == "saveSidecar" then
-               PhotoProcessor.runCommandSaveSidecar(photo)
-            else
-               logger:error("Unknown action: " .. action)
-            end
-         else
-            logger:warn("Photo not available: " .. photo.path)
-         end
+      logger:trace("----------------------------------")
+      logger:trace(string.format("%d completed successfully", args.stats.success))
+      logger:trace(string.format("%d failures %d bad format %d unavailable", args.stats.failure, args.stats.bad_type, args.stats.unavailable))
+      logger:trace("----------------------------------")
+      
    end)
 end
 
@@ -346,44 +369,34 @@ function PhotoProcessor.getSelectedPhotos()
 end
 
 
-function PhotoProcessor.getDisplayTitle(action)
-   local map = {
-      change = "Setting White Balance",
-      load = "Loading White Balance",
-      revert = "Reverting White Balance",
-      clear = "Clearing Metadata",
-      loadSidecar = "Loading WB Sidecar",
-      saveSidecar = "Saving WB Sidecar",
-   }
-   return map[action]
-end
-
-
 --Main entry point for scripts associated with menu items
 function PhotoProcessor.processPhotos(action)
-   --todo: gather stats on # success/failures
    local photos = PhotoProcessor.getSelectedPhotos()
    local totalPhotos = #photos
+   logger:trace("----------------------------------")
    logger:trace("Starting task", action, totalPhotos)
 
    LrFunctionContext.callWithContext("processPhotos", function(context) 
-      local title = PhotoProcessor.getDisplayTitle(action).." for "..totalPhotos.." Photos"
-      local progressScope = LrProgressScope {title=title}
+      local title = PhotoProcessor.getActionAttr(action, 'title')
+      local progressScope = LrProgressScope {title=title.." for "..totalPhotos.." Photos"}
       progressScope:attachToFunctionContext(context)
       progressScope:setCancelable(true)
-      
-      local props = PhotoProcessor.promptUser(action)
-      
-      for i,v in ipairs(photos) do
+
+      local args = PhotoProcessor.promptUser(action)
+      args.stats = { unavailable=0, bad_type=0, success=0, failure=0 }      
+
+      for i,photo in ipairs(photos) do
          if progressScope:isCanceled() then 
             logger:trace("Canceled task", action, i)
             break
          end
          progressScope:setPortionComplete(i, totalPhotos)
          progressScope:setCaption(action.." "..i.." of "..totalPhotos)
-         PhotoProcessor.processPhoto(v, action, props)
+
+         PhotoProcessor.processPhoto(photo, action, args)
       end
       
+      --todo: status bar broken since everything is async
       logger:trace("Completed task", action, totalPhotos)
       progressScope:done()
    end)

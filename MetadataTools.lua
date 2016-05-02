@@ -65,7 +65,12 @@ end
 
 
 function MetadataTools.expectValidWbSelection(wb)
-   --todo:verify that wb is in canonWbOptions
+   for i,v in pairs(MetadataTools.canonWbOptions) do
+      if wb == v then
+         return
+      end
+   end
+   error("Invalid white balance: "..wb)
 end
 
 
