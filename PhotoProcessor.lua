@@ -81,7 +81,7 @@ function PhotoProcessor.readMetadataFromSidecar(photo)
    local sidecar = PhotoProcessor.getSidecarFilename(photo)
 
    if not LrFileUtils.exists(sidecar) then
-      logger:trace("Sidecar doesn't exisit", sidecar)
+      logger:info("Sidecar doesn't exisit", sidecar)
       return nil
    end
      
@@ -192,7 +192,7 @@ function PhotoProcessor.runCommandSaveSidecar(photo)
    --Don't write sidecar if there's no metadata in the catalog
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
    if metadata.fileStatus ~= 'loadedMetadata' and metadata.fileStatus ~= 'changedOnDisk' then
-      logger:trace("Can't save sidecar", metadata.fileStatus, photo.path)
+      logger:info("Can't save sidecar", metadata.fileStatus, photo.path)
       return false
    else
       logger:trace("Saving metadata to sidecar", photo.path)
@@ -209,7 +209,7 @@ function PhotoProcessor.runCommandLoadSidecar(photo)
    --Skip files whose metadata is already in the catalog
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
    if status ~= nil then
-      logger:trace("Skipped loading sidecar", status, photo.path)
+      logger:info("Skipped loading sidecar", status, photo.path)
       return false
    else
       logger:trace("Loading metadata from sidecar", photo.path)
@@ -230,7 +230,7 @@ function PhotoProcessor.runCommandLoad(photo)
    --Skip files whose metadata is already in the catalog
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
    if status ~= nil then
-      logger:trace("Skipped loading", status, photo.path)
+      logger:info("Skipped loading", status, photo.path)
       return false
    else
       logger:trace("Loading metadata from file", photo.path)
@@ -251,7 +251,7 @@ function PhotoProcessor.runCommandSave(photo, newWb)
    --Don't write the file unless the original metadata is stored in the catalog
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
    if metadata.fileStatus ~= 'loadedMetadata' and metadata.fileStatus ~= 'changedOnDisk' then
-      logger:trace("Can't save file", metadata.fileStatus, photo.path)
+      logger:info("Can't save file", metadata.fileStatus, photo.path)
       return false
    else
       logger:trace("Saving metadata to file", photo.path)
@@ -269,7 +269,7 @@ function PhotoProcessor.runCommandRevert(photo)
    --Only saved files can be reverted
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
    if metadata.fileStatus ~= 'changedOnDisk' then
-      logger:trace("Can't revert file", metadata.fileStatus, photo.path)
+      logger:info("Can't revert file", metadata.fileStatus, photo.path)
       return false
    else
       logger:trace("Reverting file", photo.path)
@@ -287,7 +287,7 @@ function PhotoProcessor.runCommandClear(photo)
    --information would be lost
    local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
    if status ~= 'loadedMetadata' and status ~= 'shotInAuto' then
-      logger:trace("Can't clear metadata", status, photo.path)
+      logger:info("Can't clear metadata", status, photo.path)
       return false
    else
       logger:trace("Clearing metadata", photo.path)
@@ -332,10 +332,10 @@ function PhotoProcessor.updateProgress(progress, status)
       local success = string.format("%d of %d completed successfully", progress.stats.success, progress.total)
       local failure = string.format("%d failures, %d bad format, %d unavailable", progress.stats.failure, progress.stats.bad_type, progress.stats.unavailable)
 
-      logger:trace("----------------------------------")
-      logger:trace(success)
-      logger:trace(failure)
-      logger:trace("----------------------------------")
+      logger:info("----------------------------------")
+      logger:info(success)
+      logger:info(failure)
+      logger:info("----------------------------------")
 
       progress.scope:done()
       LrDialogs.message(progress.title, success.."\n"..failure)
@@ -387,7 +387,7 @@ function PhotoProcessor.processPhotosWithOneTask(action, photos, progress)
          local args = PhotoProcessor.promptUser(action)
          for i,photo in ipairs(photos) do
             if progress.scope:isCanceled() then 
-               logger:trace("Canceled task", progress.title, progress.complete)
+               logger:info("Canceled task", progress.title, progress.complete)
                break
             end
             PhotoProcessor.processPhoto(photo, action, args, progress)
@@ -432,9 +432,9 @@ function PhotoProcessor.processPhotos(action)
    local title = PhotoProcessor.getActionAttr(action, 'title')
    local display_title = title.." for "..total_photos.." Photos"
 
-   logger:trace("==================")
-   logger:trace(display_title)
-   logger:trace("==================")
+   logger:info("==================")
+   logger:info(display_title)
+   logger:info("==================")
 
    local progressScope = LrProgressScope {title=display_title}
    progressScope:setCancelable(true)
