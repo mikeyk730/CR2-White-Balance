@@ -11,9 +11,7 @@ require 'MetadataTools'
 --require 'ExiftoolInterface'
 require 'ExifControllerInterface'
 
---todo:can i write backup info to CR2 instead of sidecars? could reuse adj fields
 --todo: make sure catalog metadata never gets overwritten
---todo:write sidecar info into xmp
 
 Prefs = {
    writeSidecarOnLoad = true,
