@@ -344,11 +344,6 @@ end
 
 function PhotoProcessor.processPhoto(photo, action, args, progress)
    local status, err = LrTasks.pcall(function () 
-         if progress.scope:isCanceled() then 
-            logger:trace("Canceled task", progress.title, progress.complete)
-            return
-         end
-         
          --Skip files that aren't mounted
          local available = photo:checkPhotoAvailability()
          if not available then         
@@ -385,6 +380,10 @@ function PhotoProcessor.processPhotosWithOneTask(action, photos, progress)
    LrTasks.startAsyncTask(function(context)
       local args = PhotoProcessor.promptUser(action)
       for i,photo in ipairs(photos) do
+         if progress.scope:isCanceled() then 
+            logger:trace("Canceled task", progress.title, progress.complete)
+            break
+         end
          PhotoProcessor.processPhoto(photo, action, args, progress)
       end
    end)
@@ -395,7 +394,9 @@ function PhotoProcessor.processPhotosWithManyTasks(action, photos, progress)
    local args = PhotoProcessor.promptUser(action)
    for i,photo in ipairs(photos) do
       LrTasks.startAsyncTask(function(context)
-            PhotoProcessor.processPhotoAsync(photo, action, args, progress)
+            if not progress.scope:isCanceled() then 
+               PhotoProcessor.processPhotoAsync(photo, action, args, progress)
+            end
       end)
    end
 end
