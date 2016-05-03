@@ -44,7 +44,6 @@ function ExiftoolInterface.saveMetadataToFile(photo, metadata, newWb)
 
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
-         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'changedOnDisk')
          photo:setPropertyForPlugin(_PLUGIN, 'WhiteBalanceOverride', newWb)
    end, { timeout=60 })
 end
@@ -67,7 +66,6 @@ function ExiftoolInterface.restoreFileMetadata(photo, metadata)
 
    local catalog = LrApplication.activeCatalog()
    catalog:withPrivateWriteAccessDo(function(context) 
-         photo:setPropertyForPlugin(_PLUGIN, 'fileStatus', 'loadedMetadata')
          photo:setPropertyForPlugin(_PLUGIN, 'WhiteBalanceOverride', nil)     
    end, { timeout=60 })
 end

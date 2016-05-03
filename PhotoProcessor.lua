@@ -191,8 +191,8 @@ function PhotoProcessor.runCommandSaveSidecar(photo)
 
    --Don't write sidecar if there's no metadata in the catalog
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
-   if metadata.fileStatus ~= 'loadedMetadata' and metadata.fileStatus ~= 'changedOnDisk' then
-      logger:info("Can't save sidecar", metadata.fileStatus, photo.path)
+   if metadata.fileStatus ~= 'loadedMetadata' then
+      logger:info("No metadata to save to sidecar", metadata.fileStatus, photo.path)
       return false
    else
       logger:trace("Saving metadata to sidecar", photo.path)
@@ -250,7 +250,7 @@ function PhotoProcessor.runCommandSave(photo, newWb)
 
    --Don't write the file unless the original metadata is stored in the catalog
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
-   if metadata.fileStatus ~= 'loadedMetadata' and metadata.fileStatus ~= 'changedOnDisk' then
+   if metadata.fileStatus ~= 'loadedMetadata' then
       logger:info("Can't save file", metadata.fileStatus, photo.path)
       return false
    else
@@ -268,8 +268,8 @@ function PhotoProcessor.runCommandRevert(photo)
 
    --Only saved files can be reverted
    local metadata = PhotoProcessor.loadMetadataFromCatalog(photo)
-   if metadata.fileStatus ~= 'changedOnDisk' then
-      logger:info("Can't revert file", metadata.fileStatus, photo.path)
+   if metadata.WhiteBalanceOverride == nil then
+      logger:info("Can't revert file", metadata.WhiteBalanceOverride, photo.path)
       return false
    else
       logger:trace("Reverting file", photo.path)
@@ -285,9 +285,10 @@ function PhotoProcessor.runCommandClear(photo)
 
    --Files that have changed on disk can't be cleared since the original
    --information would be lost
-   local status = photo:getPropertyForPlugin(_PLUGIN, 'fileStatus')
-   if status ~= 'loadedMetadata' and status ~= 'shotInAuto' then
-      logger:info("Can't clear metadata", status, photo.path)
+   local override = photo:getPropertyForPlugin(_PLUGIN, 'WhiteBalanceOverride')
+   --todo: remove shotInAuto
+   if override ~= nil then
+      logger:info("Can't clear metadata", override, photo.path)
       return false
    else
       logger:trace("Clearing metadata", photo.path)

@@ -1,12 +1,8 @@
 local valuesFileStatus = {
    {
       value = 'loadedMetadata',
-      title = LOC '$$$/Metadata/Fields/FileStatus/MetadataLoaded=Metadata Loaded',
+      title = LOC '$$$/Metadata/Fields/FileStatus/MetadataLoaded=Cached in Catalog',
    },
-   {
-      value = 'changedOnDisk', --todo: may not need anymore
-      title = LOC '$$$/Metadata/Fields/FileStatus/UpdatedOnDisk=Updated on Disk',
-   }
 }
 
 return {
