@@ -1,4 +1,3 @@
---todo:only run if cannon 60d
 BinaryIo = {}
 
 BinaryIo.Int16ToBytes = function(x)
@@ -243,6 +242,10 @@ function IfdTable:Create(name, file, addr, map)
    return o
 end
 
+function IfdTable:GetRawValue(tag)
+   return self.entries[tag].value
+end
+
 function IfdTable:LoadSubTable(name, tag, map)
    local offset = self.entries[tag].value
    return IfdTable:Create(name, self.file, offset, map)
@@ -256,17 +259,46 @@ end
 
 
 
+TiffHeader = {}
+function TiffHeader:Create(file)
+   file:seek("set", 0)
+
+   local o = {}
+   o.bytes = file:read(0x0010)
+
+   setmetatable(o, self)
+   self.__index = self
+   return o
+end
+
+function TiffHeader:GetIfdOffset(tag)
+   return BinaryIo.BytesToInt16(self.bytes:byte(5,8))
+end
+
+
+
+
 Cr2File = {}
 function Cr2File:Create(filename)
    local o = { metadata={} }
 
    o.file = assert(io.open(filename, "r+b"))
-   o.file:seek("set", 4)
-   local ifd0_offset = BinaryIo.ReadInt32(o.file)
+
+   local header = TiffHeader:Create(o.file)
+   local ifd0_offset = header:GetIfdOffset()
 
    local ifd_0 = IfdTable:Create("IFD0", o.file, ifd0_offset)
    local ifd_exif = ifd_0:LoadSubTable("Exif", 0x8769)
    local ifd_canon_maker_notes = ifd_exif:LoadSubTable("MakerNotes", 0x927c)
+
+   --this script is hardcoded to use ColorBalance4, so can only be used
+   --by camera that use it.  only allow Canon 60d for now
+   local model = ifd_canon_maker_notes:GetRawValue(0x010)
+   if not model == 0x80000287 then
+      logger:trace("model not supported", model)
+      return nil
+   end
+
    local array_color_balance_4 = ifd_canon_maker_notes:LoadSubArray("ColorBalance4",0x4001)
    local array_shot_info = ifd_canon_maker_notes:LoadSubArray("ShotInfo", 0x04)
    
