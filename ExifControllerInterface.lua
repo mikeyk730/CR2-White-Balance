@@ -39,9 +39,10 @@ function ExifControllerInterface.saveMetadataToFile(photo, metadata, newWb)
    
    local cr2 = Cr2File:Create(photo.path)
 
-   --todo:assert that we get values
-   levels = cr2:GetValue("WB_RGGBLevels"..newWb)
-   temp = tostring(cr2:GetValue("ColorTemp"..newWb))
+   local levels = cr2:GetValue("WB_RGGBLevels"..newWb)
+   local temp = tostring(cr2:GetValue("ColorTemp"..newWb))
+   assert(levels)
+   assert(temp)
    logger:trace("saveMetadataToFile", newWb, levels, temp)
 
    cr2:SetValue('WhiteBalance', newWb)

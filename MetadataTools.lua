@@ -27,7 +27,7 @@ MetadataTools.canonWbOptions = {
    "Tungsten",
    "Fluorescent",
    "Flash",
-   "Measured", --todo:What is this?
+   "Measured",
 }
 
 
