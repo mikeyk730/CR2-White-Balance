@@ -1,7 +1,7 @@
 local valuesFileStatus = {
    {
       value = 'loadedMetadata',
-      title = LOC '$$$/Metadata/Fields/FileStatus/MetadataLoaded= Metadata Cached',
+      title = LOC '$$$/Metadata/Fields/FileStatus/MetadataLoaded=Metadata Cached',
    },
 }
 
